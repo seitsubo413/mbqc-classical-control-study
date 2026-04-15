@@ -1,24 +1,24 @@
 # MBQC FF Evaluator
 
-研究用の独立サブプロジェクトです。`XQsim` 本体や `OneAdapt_AE 2` を汚さずに、
-MBQC フィードフォワード制約評価の実験コードをここに集約します。
+このリポジトリ内の研究用サブプロジェクトです。vendored snapshot として保持している
+`OneAdapt_AE 2/` を参照しつつ、MBQC フィードフォワード制約評価の実験コードをここに集約します。
 
 ## 方針
 
 - この repo の中で進める
-- 既存実装 (`src/`, `OneAdapt_AE 2/`, `ls-pattern-compile/`) には直接混ぜない
+- `OneAdapt_AE 2/` には原則として研究ロジックを直接混ぜない
 - Python 環境はこの研究専用に分離する
 - `OneAdapt_AE 2` は依存資産として参照し、基本はラッパー側で吸収する
 
 ## 推奨環境
 
-XQsim root の `requirements.txt` は Python 3.9 系、`OneAdapt_AE 2/requirement.txt` は
+`OneAdapt_AE 2/requirement.txt` は
 別の `qiskit` 系列を要求しているため、環境は分ける。
 
 この研究では root に専用 venv を置く:
 
 ```bash
-cd /Users/seitsubo/Project/XQsim
+cd /Users/seitsubo/Project/mbqc-classical-control-study
 python3.10 -m venv .venv-ffeval
 source .venv-ffeval/bin/activate
 pip install -U pip
