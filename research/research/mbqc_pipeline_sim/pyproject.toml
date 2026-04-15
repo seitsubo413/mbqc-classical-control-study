@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mbqc-pipeline-sim"
+version = "0.1.0"
+description = "Cycle-accurate MBQC control pipeline simulator"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+
+[project.optional-dependencies]
+viz = [
+    "matplotlib>=3.8",
+    "numpy>=1.26",
+]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "smoke: Quick smoke test with a single small DAG",
+    "sweep: Parameter sweep experiments",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

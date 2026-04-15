@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mbqc-ff-evaluator"
+version = "0.1.0"
+description = "Research sandbox for MBQC feedforward constraint evaluation"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "bringup: Quick bring-up experiments (QAOA/QFT, H=4,6, seed=0)",
+    "pilot: Pilot variance experiment (QAOA, H=6, seeds 0-9)",
+    "sweep_a: Sweep A – coupled Q=H^2 baseline",
+    "sweep_b: Sweep B – fixed Q, varying H",
+    "sweep_c: Sweep C – fixed H, varying Q",
+    "slow: Long-running sweep experiments",
+    "pipeline: Aggregate + plot pipeline tests",
+    "graphix: Tests for graphix-based reference depth integration",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

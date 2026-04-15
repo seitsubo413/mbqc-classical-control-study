@@ -1,0 +1,614 @@
+h1. 光 MBQC 古典制御アーキテクチャの定量評価 — 研究進捗レポート
+
+*坪井 星汰*
+東京大学 大学院情報理工学系研究科
+2026-04-15
+
+---
+
+h2. はじめに：このレポートについて
+
+本レポートは、光 MBQC（測定型量子計算）における古典制御アーキテクチャの定量評価に関する一連の研究成果をまとめたものです。教授・先輩・後輩を含む研究チーム全員が対象読者であり、量子計算に詳しくない学部 4 年生でも通読できるよう構成しています。
+
+本研究では、2 つのツールを構築し、合わせて *32,640 件のパイプラインシミュレーション* と *85 件の FF evaluator artifact 生成* を実行しました。
+
+|_. ツール |_. 目的 |_. 規模 |
+| *FF evaluator* | コンパイラ出力から FF 制約を定量化 | 85 件のコンパイル実験 |
+| *Pipeline simulator* | マイクロアーキテクチャの設計空間を探索 | 32,640 件のサイクル精度シミュレーション（baseline + conservative follow-up） |
+
+---
+
+h2. 第 1 部 — 背景：なぜこの研究が必要か
+
+h3. 1.1 光量子コンピュータの「タイムリミット問題」
+
+光量子コンピュータでは、計算の担い手は *光子（フォトン）* です。光子は光ファイバーの delay line 内を周回させて一時保管しますが、損失により時間が経つと消えてしまいます。この「光子が生きていられる時間」を *光子寿命 τ_ph* と呼び、現在の技術では *約 1 マイクロ秒（μs）* が上限です。
+
+つまり、全ての計算処理は *1 μs 以内に完了* しなければなりません。
+
+h3. 1.2 MBQC とフィードフォワード（FF）
+
+測定型量子計算（MBQC）では、あらかじめ準備したグラフ状態の量子ビットを 1 つずつ測定して計算を進めます。ここで鍵となるのが *フィードフォワード（FF）* です。
+
+<pre>
+量子ビット A を測定
+    ↓ 結果（0 or 1）を古典制御装置に送信
+古典制御装置が「次の B の測定角度」を計算
+    ↓ 角度の指示を送信
+量子ビット B を測定
+    ↓ 結果を古典制御装置に送信
+古典制御装置が「次の C の測定角度」を計算
+    ...
+</pre>
+
+この「A → 処理 → B → 処理 → C → ...」の連鎖が *FF 依存チェーン* です。チェーンが長いほど、1 段あたりに許される古典処理時間は短くなります。
+
+*例* ：光子寿命 1 μs、FF チェーンが 100 段 → 1 段あたり *10 ns* 。1000 段なら *1 ns* （物理的に不可能）。
+
+h3. 1.3 既存研究では何が分かっていなかったか
+
+MBQC コンパイラ（OneAdapt 等）は、光子の保持レイヤ数（L_hold）や測定遅延レイヤ数（L_meas）を出力します。しかし以下が不明でした：
+
+# *FF 依存チェーンの深さ* はどれくらいか？（指標自体が定義されていなかった）
+# その深さから計算される *古典制御の時間 budget* は既存のコントローラで達成可能か？
+# *マイクロアーキテクチャの構成* （発行幅、パイプライン段数、スケジューリング方式）によって性能はどう変わるか？
+
+本研究は、1-2 を *FF evaluator* で、3 を *Pipeline simulator* で解決しました。
+
+h3. 1.4 研究の全体像
+
+<pre>
+┌─────────────────────────────────────────────────────────────────┐
+│                    OneAdapt コンパイラ                           │
+│    入力：量子回路（QAOA, QFT, VQE）                              │
+│    出力：グラフ状態、FF 依存グラフ、マッピング結果               │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+           ┌─────────────┴─────────────┐
+           ▼                           ▼
+┌─────────────────────┐   ┌──────────────────────────┐
+│   FF evaluator      │   │   Pipeline simulator      │
+│                     │   │                            │
+│ ・D_ff 抽出（新指標）│   │ ・サイクル精度シミュレーション│
+│ ・Budget 計算       │   │ ・スケジューリング探索      │
+│ ・3 種制約の統一評価│   │ ・スループット/ストール評価 │
+│                     │   │                            │
+│ 成果：              │   │ 成果：                     │
+│ 「何 ns 必要か」    │   │ 「どの構成なら達成できるか」│
+│ 85 ケースのデータ   │   │ 32,640 件のデータ          │
+└─────────┬───────────┘   └────────────┬───────────────┘
+          │                            │
+          └──────────┬─────────────────┘
+                     ▼
+          ┌────────────────────┐
+          │  統合設計指針       │
+          │                    │
+          │ ・signal_shift 高優先│
+          │ ・W=4 は有望な開始点│
+          │ ・OoO は optional  │
+          │ ・RTL チームへの仕様│
+          └────────────────────┘
+</pre>
+
+---
+
+h2. 第 2 部 — FF Evaluator：FF 制約を定量化する
+
+h3. 2.1 FF evaluator とは何か
+
+FF evaluator は、OneAdapt コンパイラの出力から *FF 依存グラフ* を取得し、その最長パス長（ *D_ff* ）を新規指標として定義・計算するツールです。D_ff を光子寿命 τ_ph と照合することで、古典制御装置に何ナノ秒の処理速度が要求されるかを数値化します。
+
+h3. 2.2 新規指標の定義
+
+|_. 指標 |_. 式 |_. 意味 |
+| *D_ff (raw)* | FF 依存 DAG の最長パス長 | signal_shift なしでの逐次古典処理段数 |
+| *D_ff (shifted)* | signal_shift 後の最長パス長 | 最適化後の逐次古典処理段数 |
+| *t_ff_crit* | τ_ph / D_ff | FF 1 段あたりに許容される古典処理時間（ns） |
+| *t_hold_crit* | τ_ph / L_hold | hold 制約から導かれる 1 レイヤあたりの時間予算 |
+| *t_meas_crit* | τ_ph / L_meas | measurement delay 制約からの時間予算 |
+
+*budget が小さいほど制約が厳しい。*
+
+h3. 2.3 実験条件
+
+|_. 項目 |_. 設定 |
+| アルゴリズム | QAOA（確率的）、QFT（決定論的・高密度）、VQE（決定論的・低密度） |
+| H（ハードウェアグリッド） | 4, 6, 8, 10, 12 |
+| Q（論理量子ビット数） | Coupled: Q = H²（16, 36, 64, 100） |
+| seed | 5 個（QAOA pilot は 10 個） |
+| τ_ph | 0.5, 1.0, 5.0 μs（感度分析） |
+| スイープ種別 | A: Q=H²（主実験）、B: Q 固定・H 可変、C: H 固定・Q 可変 |
+| 合計 | *85 ケース* （全件成功） |
+
+h3. 2.4 FF evaluator の主要結果
+
+h4. 結果 1：D_ff は Q に線形スケールし、係数はアルゴリズムに強く依存する
+
+|_. Q |_. QAOA D_ff |_. QFT D_ff |_. VQE D_ff |
+| 16 | 34（IQR: 30-36） | 77（±0） | 15（±0） |
+| 36 | 75（IQR: 73-82） | 177（±0） | 35（±0） |
+| 64 | 142（IQR: 133-156） | 317（±0） | 63（±0） |
+| 100 | 217（IQR: 213-226） | — | 99（±0） |
+
+スケーリング係数： *VQE ≈ 1、QAOA ≈ 2.2、QFT ≈ 5.0*
+
+同じ Q=64 でも VQE (D_ff=63) と QFT (D_ff=317) では要求する逐次段数が *5 倍以上* 異なります。光 MBQC で FF 制約を議論するとき、アルゴリズムを区別しない一般論は意味をなしません。
+
+*なぜアルゴリズムで差が出るか* ：VQE の ansatz 回路は「各量子ビットへの操作がほぼ独立」な構造のため、依存チェーンが浅い。QFT は全量子ビット間に制御回転ゲートを持つため、全結合に近い依存構造が生まれます。
+
+h4. 結果 2：ハードウェアサイズ H を増やしても D_ff は改善しない
+
+QAOA Q=64 で H を変えた場合（Sweep B）：
+
+|_. H |_. D_ff（中央値） |_. L_hold（中央値） |
+| 8 | 142 | 40 |
+| 10 | 142 | 34 |
+| 12 | 142 | 31 |
+
+*D_ff は H に完全に非依存* です。一方、L_hold は H=8→12 で −22% 改善。
+
+物理的解釈：L_hold は「空間的混雑による光子の待ち時間」なのでグリッドを広げると緩和される。D_ff は「アルゴリズムの回路構造に由来する逐次依存段数」なので、ハードウェアの物理的拡大では解決できません。
+
+*設計への含意* ：チップ面積の拡大は hold 制約には有効だが、FF 依存制約を解消するにはコンパイラ側の最適化が必要です。
+
+h4. 結果 3：signal_shift が D_ff を劇的に削減する
+
+|_. アルゴリズム |_. D_ff (raw) |_. D_ff (shifted) |_. 削減率 |
+| QAOA（Q=16-100、全ケース） | 28-226 | *常に 2* | 97-99% |
+| QFT（H=8、Q=64） | 317 | 27-31 | 90% |
+| VQE（Q=16-100、全ケース） | 15-99 | *常に 1* | 93-99% |
+
+signal_shift は OneAdapt に実装されている最適化で、z 補正エッジの伝播を整理して依存グラフを簡約化します。QAOA/VQE では D_ff がほぼ完全に並列化可能（2 段または 1 段）になる驚くべき効果があります。
+
+ただし QFT では shifted でも 27-31 段が残り、依然として厳しい要求が続きます。
+
+*重要な注意* ：signal_shift は OneAdapt の現行コードでコメントアウトされています。本研究の結果は、この最適化を復活させることが QAOA/VQE の実現可能性の鍵であることを強く示しています。
+
+h4. 結果 4：支配制約はアルゴリズムと規模で遷移する
+
+τ_ph = 1 μs での 3 種制約比較（代表例）：
+
+*QAOA Q=100* ：dependency budget = 4.6 ns（ *支配的* ）、hold = 19.2 ns、measurement = 19.6 ns
+*QFT Q=64* ：dependency = 3.2 ns、hold = 25.6 ns、measurement = 0.37 ns（ *支配的* ）
+*VQE Q=100* ：dependency = 10.1 ns、hold = 23.3 ns、measurement = 1.08 ns（ *支配的* ）
+
+どの制約が一番厳しいかは、アルゴリズムと規模によって変わります。dependency / hold / measurement の 3 種を同時に評価することが不可欠です。
+
+h4. 結果 5：コントローラ feasibility
+
+|_. コントローラ |_. raw depth で feasible |_. shifted depth で feasible |
+| OPX（250 ns） | 0 / 11 | *8 / 11* |
+| XCOM（185 ns） | 0 / 11 | *8 / 11* |
+
+signal_shift なしでは全滅です。一方、適用後に controller budget が十分に緩和されるのは主に QAOA/VQE であり、QFT は H=4 でも 125-143 ns、H=8 では 32-37 ns に留まるため、OPX/XCOM では依然として厳しいです。
+
+h4. 結果 6：graphix との独立比較（Q=16）
+
+|_. アルゴリズム |_. OneAdapt raw |_. OneAdapt shifted |_. graphix |
+| QAOA | 34 | 2 | 189 |
+| QFT | 77 | 7 | 615 |
+| VQE | 15 | 1 | 90 |
+
+OneAdapt の specialized コンパイラは、汎用 MBQC transpiler（graphix）より 4.5-8.0 倍浅い依存構造を生成します。signal_shift 後はさらに 1-2 桁の差が開きます。
+
+h3. 2.5 FF evaluator のまとめ
+
+FF evaluator が示した核心的メッセージ：
+
+# *D_ff は Q にほぼ線形。係数はアルゴリズム依存* （VQE ≈ 1、QFT ≈ 5）
+# *ハードウェア拡張は D_ff に無効* 。コンパイラ最適化が必要
+# *signal_shift は QAOA/VQE の実現可能性を左右する*
+# *3 種制約の同時評価が不可欠* 。支配項はワークロードで変わる
+
+---
+
+h2. 第 3 部 — Pipeline Simulator：マイクロアーキテクチャを探索する
+
+h3. 3.1 なぜ Pipeline simulator が必要だったか
+
+FF evaluator は「D_ff = 37 なら budget は 27 ns」と教えてくれます。しかし以下には答えられません：
+
+* D_ff = 37 でも、 *並列に測定を進める* ことで FF 待ちを隠蔽できるのではないか？
+* *発行幅* （1 サイクルに何個の測定を同時発行できるか）を増やすとスループットはどこまで改善するか？
+* *スケジューリングの賢さ* （in-order vs out-of-order）で性能はどう変わるか？
+
+これらは *マイクロアーキテクチャの設計選択* の問題であり、静的な D_ff だけでは答えが出ません。サイクルごとの動的な振る舞いをシミュレートする必要があります。
+
+h3. 3.2 Pipeline simulator の設計
+
+既存の XQ-simulator（ゲート型 QCP のサイクル精度シミュレータ）と同じ *2 相ロックステップ* アーキテクチャ（transfer → update → tick）を踏襲しました。
+
+*パイプラインモデル* ：
+
+<pre>
+Ready Queue ──(issue W nodes/cyc)──> Measurement Unit ──(L_meas cyc)──> FF Processor ──(L_ff cyc)──> Done
+     ↑                                                                                              │
+     └──────────────────── dependency resolution（FF 結果による依存解放）────────────────────────────┘
+</pre>
+
+各要素の意味：
+* *Ready Queue* ：FF 依存が全て解決済みで、すぐに測定できるノードの集合
+* *Issue* ：Ready Queue から最大 W 個のノードを選んで測定パイプラインに投入
+* *Measurement Unit* ：測定実行。L_meas サイクルかかる
+* *FF Processor* ：測定結果から Byproduct（補正情報）を計算。L_ff サイクルかかる
+* *dependency resolution* ：FF 処理が完了したノードの結果が、後続ノードの依存を解放
+
+*抽象化の根拠* ：フロントエンド（命令フェッチ・デコード）は十分高速でボトルネックにならないと仮定。シミュレータの焦点は FF 依存とスケジューリングの相互作用に絞っています。
+
+h3. 3.3 入力データ
+
+FF evaluator で生成した 85 件の依存 DAG（JSON アーティファクト）をそのまま入力として使用します。各 DAG は 1,000-12,000 ノード、2,000-21,000 エッジの規模です。
+
+*重要* ：ノードの実行順序はシミュレータが動的に決定します（FF evaluator の @map_route@ によるレイヤ割当は使用しない）。これにより「どのスケジューリングが最適か」を探索できます。
+
+h3. 3.4 探索パラメータ
+
+|_. パラメータ |_. 記号 |_. 探索値 |_. 意味 |
+| 発行幅 | W | 1, 2, 4, 8, 16 | 1 サイクルに発行できる測定数 |
+| 測定レイテンシ | L_meas | 1, 2, 3 cycles | 測定実行のサイクル数 |
+| FF 計算レイテンシ | L_ff | 1, 2, 3, 5 cycles | Byproduct 計算のサイクル数 |
+| スケジューリングポリシー | policy | 4 種類（後述） | ノード選択戦略 |
+
+全組み合わせ：5 × 3 × 4 × 4 = *240 構成* × 85 DAG = *20,400 シミュレーション*
+
+h3. 3.5 4 つのスケジューリングポリシー
+
+|_. ポリシー |_. 方式 |_. 特徴 |
+| *ASAP* | トポロジカル順に、依存解決済みを即発行 | 最もシンプル。in-order の代表 |
+| *Layer* | 同一トポロジカルレベルのノードのみ発行 | 厳密な in-order。保守的 |
+| *GreedyCritical* | 残りクリティカルパスが最長のノードを優先 | OoO（out-of-order）の代表 |
+| *Random* | Ready ノードからランダム選択 | ベースライン比較用 |
+
+h3. 3.6 出力メトリクス
+
+|_. メトリクス |_. 定義 |_. 意味 |
+| *total_cycles* | 全ノード測定完了までのサイクル数 | 低いほど高速 |
+| *throughput* | total_nodes / total_cycles | 1 サイクルあたりの測定数。高いほど良い |
+| *stall_rate* | Ready Queue が空のサイクル割合 | FF 待ちの頻度。低いほど良い |
+| *utilization* | 実際の発行数 / (W × total_cycles) | 発行幅の有効活用率。高いほど良い |
+
+h3. 3.7 Pipeline simulator の主要結果
+
+h4. 発見 1：DAG の並列度は極めて高い — FF ストールはほぼ発生しない
+
+*最も保守的な構成（W=1, L_meas=1, L_ff=1, ASAP）での結果：*
+
+|_. アルゴリズム |_. ストール率（中央値） |_. スループット（中央値） |
+| QAOA | 0.12% | 0.998 nodes/cyc |
+| QFT | 0.03% | 1.000 nodes/cyc |
+| VQE | 0.08% | 0.998 nodes/cyc |
+
+*common coupled subset の中央値では* 、W=1（毎サイクル 1 測定しか発行できない最も保守的な構成）でもストール率は 0.13% 未満です。
+
+これは非常に重要な発見です。D_ff が 37-317 と大きくても、各トポロジカルレベルに十分な数の独立ノードが存在するため、FF 待ちが発生する前に常に別のノードを発行できるのです。
+
+*含意* ：baseline model の中央値では W の効果が大きいが、これは same-cycle release と unlimited stage width を置いた楽観条件つきの結果です。
+
+h4. 発見 2：スループットは W にほぼ線形にスケールする（W ≤ 8 まで）
+
+ASAP, L_meas=1, L_ff=1 での結果：
+
+|_. W |_. QAOA throughput |_. QFT throughput |_. VQE throughput |_. QAOA 利用率 |
+| 1 | 0.998 | 1.000 | 0.998 | 99.8% |
+| 2 | 1.988 | 1.996 | 1.991 | 99.4% |
+| 4 | 3.933 | 3.958 | 3.939 | 98.3% |
+| 8 | 7.183 | 7.631 | 7.579 | 89.8% |
+| 16 | 10.025 | 13.358 | 13.224 | 62.7% |
+
+*W=8 までは概ね良好に伸びる* 。W=16 で頭打ちが始まり、アルゴリズム間の差が顕著になります。
+
+注目すべき差：
+* *QAOA* は W=16 で利用率 62.7% に低下。W=8 付近から収穫逓減が強い
+* *QFT/VQE* は W=16 でも 83% 前後の利用率を維持し、より広い issue 幅を活用できる
+
+h4. 発見 3：GreedyCritical（OoO）はストール率を 1/3-1/5 に削減する
+
+W=4, L_meas=1, L_ff=2 でのポリシー比較：
+
+|_. ポリシー |_. QAOA throughput |_. QAOA stall |_. QFT throughput |_. QFT stall |
+| ASAP | 3.815 | 2.49% | 3.897 | 1.29% |
+| Layer | 3.592 | 2.58% | 3.759 | 1.53% |
+| *GreedyCritical* | *3.966* | *0.49%* | *3.950* | *0.25%* |
+| Random | 3.828 | 2.09% | 3.888 | 1.28% |
+
+GreedyCritical はストール率を ASAP の 1/3-1/5 に削減します。ただし、スループット自体の改善は 1-3% と小さい（ストール率がそもそも低いため）。
+
+*Layer は最も性能が低い* 。同一トポロジカルレベルのノードしか発行しないため、レベル末尾で発行幅を埋められないサイクルが増えます。
+
+h4. 発見 4：パイプラインレイテンシが大きいと初めてストールが問題になる
+
+最悪条件（W=16, L_meas=3, L_ff=5, ASAP）：
+
+|_. アルゴリズム |_. throughput |_. stall_rate |_. utilization |
+| QAOA | 2.607 | 72.4% | 16.3% |
+| QFT | 4.456 | 63.4% | 27.9% |
+| VQE | 4.423 | 60.1% | 27.6% |
+
+*L_meas + L_ff = 8 cycles* のとき、ストール率は 60-70% に達します。広い発行幅 W=16 があっても、パイプラインが深いと律速されます。
+
+*設計含意* ：W を増やすなら L_meas + L_ff を短く保つこと。 *W=4* は有望な開始点ですが、最適値の主張にはコストモデルが必要です。
+
+h4. 発見 5：アルゴリズムごとの DAG トポロジ差
+
+|_. 特性 |_. QAOA |_. QFT |_. VQE |
+| DAG の形状 | 狭く深い | 中間的 | 広く浅い |
+| W=16 利用率 | 62.7% | 83.5% | 82.7% |
+| W が飽和する点 | W=8 | W=8-16 | W=8-16 |
+| 推奨 W | 4 | 4-8 | 4-8 |
+
+QFT/VQE は W=16 でも 83% 前後の利用率を維持し、QAOA より広い発行幅の恩恵を受けます。QAOA は DAG 幅が限定的で、W=8 以上は収穫逓減が強くなります。
+
+---
+
+h2. 第 4 部 — 統合分析：2 つのツールから導かれる設計指針
+
+h3. 4.1 FF evaluator と Pipeline simulator の関係
+
+FF evaluator は「 *必要条件* 」を示します：D_ff = 37 なら、1 FF 段あたり 27 ns 以内の古典処理が必要。
+
+Pipeline simulator は「 *十分条件* 」を探索します：パイプライン構成 X（W=4, L_ff=2, ASAP）なら、スループット Y でストール率 Z%。
+
+両者を組み合わせることで、初めて「この構成でこのアルゴリズムは実行可能か？」に答えられます。
+
+h3. 4.2 統合 Feasibility 分析
+
+|_. 条件 |_. 判定 |_. 根拠 |
+| signal_shift なし、任意の構成 | *全て NG* | raw D_ff ≥ 37 で budget ≤ 27 ns。OPX (250ns) / XCOM (185ns) いずれも不可 |
+| signal_shift あり、QAOA/VQE | *静的 budget 上は有望* | D_ff = 1-2 で budget ≥ 500 ns。OPX/XCOM を満たす |
+| signal_shift あり、QFT H=4 | *なお NG* | D_ff(shifted) = 7-8 で budget ≈ 125-143 ns。OPX/XCOM は満たさない |
+| signal_shift あり、QFT H=8 | *NG* | D_ff(shifted) = 27-31 で budget ≈ 32-37 ns |
+
+h3. 4.3 推奨マイクロアーキテクチャ
+
+|_. パラメータ |_. 推奨値 |_. 根拠 |
+| *W（発行幅）* | *4 を開始点* | 4 nodes/cycle 近い throughput が得られる。最適値の主張にはコストモデルが必要 |
+| *L_meas* | *1-2* | 測定は可能な限り短く。L_meas ≥ 3 は利用率を大きく落とす |
+| *L_ff* | *1-2* | 深い FF レイテンシは stall を急増させる |
+| *meas_width / ff_width* | *W 以上* | @ff_width < W@ でも @meas_width < W@ でも throughput が大きく落ちる |
+| *Policy* | *ASAP または GreedyCritical* | GreedyCritical は stall 改善に有効。コストを抑えるなら ASAP でもよい |
+| *signal_shift* | *高優先* | QAOA/VQE には有効だが、QFT には単独では不十分 |
+
+*RTL チームへのメッセージ* ：W=4 は有望な開始点であり、まずは short-latency path を優先すべきです。OoO は stretch goal、signal_shift は QAOA/VQE 向けの高優先最適化候補です。
+
+h3. 4.4 アルゴリズム別の設計ガイド
+
+*QAOA* ：
+* signal_shift 後 D_ff = 2 と静的 budget は大きく改善
+* W=8 以上では収穫逓減が強い
+* shifted DAG 上の動的ストール評価は未実施
+
+*QFT* ：
+* signal_shift 後 D_ff = 7-31 → budget は 33-143 ns で、OPX/XCOM では依然として厳しい
+* W=8 まで有効にスケール
+* 大規模では measurement delay が支配的 → controller 高速化だけでは不十分
+* 最も MBQC 実装が難しいアルゴリズム
+
+*VQE* ：
+* signal_shift 後 D_ff = 1 → 静的 budget 上は理想的
+* DAG が最も並列だが、W=16 では利用率 83% 程度に留まる
+* 大規模では measurement delay に注意
+* 光 MBQC に最も適したアルゴリズム候補
+
+---
+
+h2. 第 5 部 — 実装詳細
+
+h3. 5.1 FF evaluator の実装
+
+<pre>
+research/mbqc_ff_evaluator/
+├── src/mbqc_ff_evaluator/
+│   ├── domain/models.py           # ExperimentConfig, OnePercArtifact, FFNode, FFEdge 等
+│   ├── domain/enums.py            # Algorithm, DependencyKind, ArtifactStatus
+│   ├── adapters/
+│   │   ├── oneadapt_backend.py    # OneAdapt コンパイラとのインターフェース
+│   │   ├── json_repository.py     # アーティファクトの JSON 永続化
+│   │   └── csv_repository.py      # 集約結果の CSV 出力
+│   ├── services/
+│   │   ├── compute_metrics.py     # D_ff 計算（トポロジカルソートによる最長パス）
+│   │   ├── compute_budgets.py     # budget 計算（τ_ph / D_ff）
+│   │   └── collect_artifacts.py   # コンパイル実行のオーケストレーション
+│   ├── cli/
+│   │   ├── smoke.py               # 単発実行 CLI
+│   │   ├── sweep.py               # パラメータスイープ CLI
+│   │   ├── aggregate.py           # 結果集約 CLI
+│   │   └── plot.py                # 可視化 CLI
+│   └── visualization/plots.py     # matplotlib による図生成
+├── tests/                         # 27 テスト
+└── results/
+    ├── raw/                       # 85 件の JSON アーティファクト
+    ├── summary/                   # metrics.csv, budgets.csv 等
+    └── figures/                   # fig1-7 + appendix（PNG + PDF）
+</pre>
+
+*主要な技術的決定* ：
+* OneAdapt の @determine_dependency()@ 後の dgraph（NetworkX DiGraph）から FF ノード/エッジを抽出
+* D_ff 計算はトポロジカルソートベースの最長パス DP（O(V+E)）
+* signal_shift は OneAdapt の既存実装を呼び出し、shifted グラフ上で再度 D_ff を計算
+* 統計集約は中央値 + IQR（外れ値に頑健）
+
+h3. 5.2 Pipeline simulator の実装
+
+<pre>
+research/mbqc_pipeline_sim/
+├── src/mbqc_pipeline_sim/
+│   ├── domain/
+│   │   ├── models.py              # PipelineConfig, SimDAG, SimResult, CycleRecord
+│   │   └── enums.py               # SchedulingPolicy, NodeState
+│   ├── core/
+│   │   ├── simulator.py           # MbqcPipelineSimulator（メインループ）
+│   │   ├── scheduler.py           # ASAP, Layer, GreedyCritical, Random の 4 ポリシー
+│   │   ├── pipeline_stage.py      # LatencyPipeline（固定レイテンシキュー）
+│   │   ├── dag_analysis.py        # トポロジカルレベル、ILP 分析
+│   │   └── controller_models.py   # OPX, XCOM 等のコントローラ仕様
+│   ├── adapters/
+│   │   ├── artifact_loader.py     # FF evaluator JSON → SimDAG 変換
+│   │   └── csv_writer.py          # SimResult → CSV 出力
+│   ├── cli/
+│   │   ├── run.py                 # 単一シミュレーション CLI
+│   │   ├── sweep.py               # パラメータスイープ CLI
+│   │   ├── aggregate.py           # 結果集約 CLI
+│   │   └── plot.py                # 可視化 CLI
+│   └── visualization/plots.py     # matplotlib による図生成（8 枚）
+├── tests/                         # 19 テスト（全合格）
+└── results/
+    ├── summary/
+    │   ├── sweep.csv              # 20,400 行（全シミュレーション結果）
+    │   ├── aggregated.csv         # 3,840 グループに集約
+    │   ├── sweep_conservative_common.csv
+    │   ├── aggregated_conservative_common.csv
+    │   ├── sweep_conservative_meas_common.csv
+    │   └── aggregated_conservative_meas_common.csv
+    └── figures/                   # fig1-8（PNG + PDF）
+</pre>
+
+*XQ-simulator との対応* ：
+
+|_. XQ-simulator |_. Pipeline Sim |_. 備考 |
+| @run_cycle_transfer()@ | 依存解決 + Ready Queue 更新 | ステージ間配線 |
+| @run_cycle_update()@ | パイプライン段の advance() | 状態更新 |
+| @run_cycle_tick()@ | サイクルカウンタ + 終了判定 | tick |
+| @buffer.py@ の valid/ready | @LatencyPipeline@ | 固定レイテンシキュー |
+| @unit_stat_sim@ | @CycleRecord@ | 毎サイクル統計 |
+| @.qbin@ 入力 | FF evaluator JSON 入力 | 入力形式差替え |
+
+h3. 5.3 再現手順
+
+<pre>
+cd /Users/seitsubo/Project/XQsim
+source .venv-ffeval/bin/activate
+
+# ── FF evaluator ──
+
+# 全テスト実行
+cd research/mbqc_ff_evaluator
+python -m pytest tests/ -v
+
+# Sweep A（主実験、約30-60分）
+python -m pytest tests/test_sweep_main.py -m sweep_a -v -s
+
+# 集約 + 図の生成
+python -m pytest tests/test_pipeline.py -v -s
+
+# ── Pipeline simulator ──
+
+cd ../mbqc_pipeline_sim
+
+# 全テスト実行
+python -m pytest tests/ -v
+
+# 単一シミュレーション
+python -m mbqc_pipeline_sim.cli.run \
+    ../mbqc_ff_evaluator/results/raw/QAOA_H4_Q16_seed0.json \
+    -W 4 --l-ff 2 --policy asap
+
+# フルスイープ（約15分、20,400件）
+python -m mbqc_pipeline_sim.cli.sweep
+
+# 集約
+python -m mbqc_pipeline_sim.cli.aggregate
+
+# 図の生成
+python -m mbqc_pipeline_sim.cli.plot
+</pre>
+
+h3. 5.4 生成物一覧
+
+*FF evaluator の出力* ：
+* @results/raw/@ — 85 件の JSON アーティファクト（各 10-500 KB）
+* @results/summary/metrics.csv@ — 全ケースの raw メトリクス
+* @results/summary/budgets.csv@ — 集約された budget 統計
+* @results/figures/@ — fig1（Divergence）、fig2（Budget）、fig3（Bottlenecks）、fig4（Shifted Budget）、fig5（Sensitivity）、fig6（Reference Depth）、fig7（Hardware Width）、appendix（Conservative）
+
+*Pipeline simulator の出力* ：
+* @results/summary/sweep.csv@ — 20,400 行の全シミュレーション結果
+* @results/summary/aggregated.csv@ — 3,840 グループに seed 集約
+* @results/summary/sweep_conservative_common.csv@ — common coupled subset の保守モデル sweep
+* @results/summary/aggregated_conservative_common.csv@ — 保守モデルの集約結果
+* @results/summary/sweep_conservative_meas_common.csv@ — measurement width を有限化した保守モデル sweep
+* @results/summary/aggregated_conservative_meas_common.csv@ — measurement width 保守モデルの集約結果
+* @results/figures/@ — fig1（Throughput vs Width）、fig2（Stall Heatmap × 3 アルゴリズム）、fig3（ILP Profile）、fig4（Policy Comparison）、fig5（Static FF Budget Context）、fig6（Conservative Alignment）、fig7（FF Underprovisioning）、fig8（Stage Width Comparison）
+
+---
+
+h2. 第 6 部 — 研究の限界と今後の課題
+
+h3. 6.1 現在のモデルの仮定と限界
+
+|_. 仮定 |_. 影響 |_. 対策の方向性 |
+| *unit-weight 近似* （FF evaluator） | x 補正と z 補正に同一コストを仮定 | 重み付きモデルへの拡張 |
+| *即時スケジューリング* （Pipeline sim） | スケジューラ自体のレイテンシを無視 | フロントエンドパイプラインの導入 |
+| *無限バッファ* （Pipeline sim） | バックプレッシャを無視 | 有限バッファモデル |
+| *Raw DAG のみ* （Pipeline sim） | shifted DAG での throughput 未検証 | adapter 拡張で shifted edges を保存 |
+| *Fusion 成功率 100%* | FBQC の現実を反映していない | 確率的 fusion 失敗モデル |
+| *誤り訂正なし* | デコーダ遅延を FF budget に加算していない | EDU/PFU/LMU の段階的導入 |
+
+h3. 6.2 今後のタスク一覧
+
+|_. タスク |_. 内容 |_. 優先度 |_. 種別 |
+| signal_shift 後 DAG でのシミュレーション | oneadapt_backend 拡張で shifted edges を保存し、Pipeline sim で比較 | 高 | 実装 |
+| measurement delay の根因解析 | routing heuristic の不安定性 vs アルゴリズム構造の切り分け | 高 | 分析 |
+| 学会発表準備 | FF evaluator + Pipeline sim を 1 本のストーリーにまとめたスライド・予稿 | 高 | 執筆 |
+| graphix バックエンド統合 | コンパイラ間比較の系統的ベンチマーク | 中 | 研究 |
+| Fusion 失敗モデル | 確率的グラフ変動の影響評価 | 中 | 研究 |
+| RTL 設計との接続 | XQsim フレームワークの MBQC 向け拡張 | プロジェクト本体 | 実装 |
+
+---
+
+h2. 第 7 部 — まとめ
+
+本研究では、光 MBQC の古典制御アーキテクチャを定量的に評価する 2 つのツールを構築し、32,640 件のパイプラインシミュレーションと 85 件の FF evaluator artifact を通じて以下の知見を得ました。
+
+h3. FF evaluator が示したこと
+
+# *D_ff（FF 依存深さ）* は Q に線形スケールし、係数はアルゴリズムに強く依存する（VQE ≈ 1、QFT ≈ 5）
+# ハードウェアサイズ H を増やしても D_ff は改善しない（コンパイラ最適化が必要）
+# signal_shift は QAOA/VQE の D_ff を 97-99% 削減し、静的 FF budget を大きく緩和
+# 支配制約（dependency / hold / measurement）はアルゴリズムと規模で遷移する
+
+h3. Pipeline simulator が示したこと
+
+# baseline model の中央値では OneAdapt 生成 DAG は高並列であり、FF 依存ストールは小さい
+# スループットのボトルネックは *発行幅 W* であり、D_ff ではない
+# *W=4 は有望な開始点* （ただし最適値の主張にはコストモデルが必要）
+# GreedyCritical（OoO）はストール率を 1/3-1/5 に削減するが、スループットへの寄与は限定的
+# *有限 stage width では throughput を主指標に見る必要がある* 。@meas_width < W@ の penalty は @ff_width < W@ と同程度だが、stall_rate 単独では measurement 側 backpressure を過小評価する
+
+h3. 統合的な設計指針
+
+# *signal_shift は QAOA/VQE で高優先だが、QFT には単独では不十分*
+# *W=4, ASAP は有望な開始点* （OoO は stretch goal）
+# *@ff_width@ と @meas_width@ は少なくとも issue 幅に見合うように設計すべき*
+# *アルゴリズムごとに最適構成が異なる* （VQE は W=16 でもスケール、QAOA は W=8 で飽和）
+
+これらの知見は、RTL チームへの「W=4 を起点に短レイテンシ構成を優先し、@ff_width@ と @meas_width@ を issue 幅以下にしない」という設計出発点と、コンパイラチームへの「QAOA/VQE では signal_shift、QFT ではさらに別の最適化が必要」という指針を提供します。
+
+---
+
+h2. 付録 A — 用語集
+
+|_. 用語 |_. 説明 |
+| *MBQC* | Measurement-Based Quantum Computation。グラフ状態上の測定とフィードフォワードにより計算を実行する方式 |
+| *フィードフォワード (FF)* | 先行測定結果を後続測定基底の決定に反映する操作。MBQC の計算実行の核心 |
+| *光子寿命 (τ_ph)* | 光子が delay line 内で保持できる最大時間。現状 ≈ 1 μs |
+| *D_ff* | FF 依存グラフの最長パス長。本研究が定義した新規指標 |
+| *signal_shift* | FF 依存グラフの z 補正エッジを簡約化する最適化。QAOA/VQE で D_ff を 97-99% 削減 |
+| *t_ff_crit* | τ_ph / D_ff。FF 1 段あたりに許容される古典処理時間（ns） |
+| *L_hold* | 光子保持要求レイヤ数。空間マッピングの混雑に起因。H 増加で改善 |
+| *L_meas* | 最大測定遅延レイヤ数。大規模 QFT/VQE で支配的になりうる |
+| *OneAdapt* | MBQC 向けコンパイラ研究実装 [MICRO 2025] |
+| *graphix* | 汎用 MBQC transpiler。独立 baseline として使用 |
+| *OPX* | Quantum Machines 社の量子制御プロセッサ。参照 FF 遅延 ≈ 250 ns |
+| *XCOM* | Fermilab の量子制御システム。参照 FF 遅延 ≈ 185 ns |
+| *W（発行幅）* | 1 サイクルに発行できる測定数。パイプラインシミュレータの探索パラメータ |
+| *L_ff* | FF 計算レイテンシ（cycles）。Byproduct 計算にかかるサイクル数 |
+| *ASAP* | As Soon As Possible スケジューリング。依存が解決したら即発行 |
+| *GreedyCritical* | OoO スケジューリング。残りクリティカルパスが最長のノードを優先 |
+| *XQsim* | 既存のゲート型量子制御プロセッサシミュレーションフレームワーク |
+| *gflow* | MBQC の測定パターンに理論最適な実行順序を保証する数学的条件 |
+
+---
+
+p(>). *レポート作成日* : 2026-04-15
+*データ* : FF evaluator 85 artifacts + Pipeline simulator 32,640 simulations
+*計算環境* : Apple Silicon Mac, Python 3.10, OneAdapt_AE 2
