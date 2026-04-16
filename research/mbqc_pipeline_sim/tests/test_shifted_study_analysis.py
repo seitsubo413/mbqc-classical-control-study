@@ -91,6 +91,42 @@ def test_shifted_study_outputs(tmp_path: Path) -> None:
                 meas_width=8,
                 ff_width=4,
             ),
+            _row(
+                "raw",
+                "TESTB",
+                6,
+                36,
+                0,
+                8,
+                2,
+                0.95,
+                0.27,
+                0.48,
+                policy="greedy_critical",
+                issue_width=8,
+                l_meas=2,
+                l_ff=2,
+                meas_width=8,
+                ff_width=4,
+            ),
+            _row(
+                "shifted",
+                "TESTB",
+                6,
+                36,
+                0,
+                2,
+                2,
+                1.3,
+                0.09,
+                0.6,
+                policy="greedy_critical",
+                issue_width=8,
+                l_meas=2,
+                l_ff=2,
+                meas_width=8,
+                ff_width=4,
+            ),
         ],
     )
 
@@ -98,7 +134,7 @@ def test_shifted_study_outputs(tmp_path: Path) -> None:
     effects = build_paired_seed_effects(observations)
     outputs = build_shifted_study_outputs(observations)
 
-    assert len(effects) == 6
+    assert len(effects) == 7
     assert outputs.paired_seed_effects[0]["raw_stall_bucket"] == "stall_high"
     assert outputs.paired_seed_effects[0]["latency_profile"] == "l1_l1"
     assert outputs.paired_seed_effects[-1]["width_profile"] == "W8_M8_F8"
@@ -127,6 +163,13 @@ def test_shifted_study_outputs(tmp_path: Path) -> None:
         for row in outputs.policy_width_summary
     }
     assert policy_width_rows[("TESTB", "asap", "W8_M8_F8")]["pair_count"] == 1
+    assert policy_width_rows[("TESTB", "greedy_critical", "W8_M8_F4")]["pair_count"] == 1
+
+    policy_variant_rows = {
+        (row["dag_variant"], row["algorithm"], row["policy"], row["width_profile"]): row
+        for row in outputs.policy_variant_summary
+    }
+    assert policy_variant_rows[("shifted", "TESTB", "asap", "W8_M8_F4")]["throughput_median"] == 1.1
 
     policy_stall_rows = {
         (row["algorithm"], row["policy"], row["raw_stall_bucket"]): row
@@ -174,6 +217,19 @@ def test_shifted_study_outputs(tmp_path: Path) -> None:
     assert exclusion_rows[("algorithm_hq", "TESTA", "4", "16")]["missing_shifted_seed_count"] == 1
     assert exclusion_rows[("algorithm_hq", "TESTB", "6", "36")]["is_complete_pair_set"] == "yes"
 
+    win_rows = {
+        (row["dag_variant"], row["algorithm"], row["policy"], row["width_profile"]): row
+        for row in outputs.policy_win_summary
+    }
+    assert win_rows[("shifted", "TESTB", "asap", "W8_M8_F4")]["throughput_win_count"] == 1
+
+    vs_asap_rows = {
+        (row["dag_variant"], row["algorithm"], row["policy"], row["width_profile"]): row
+        for row in outputs.policy_vs_asap_summary
+    }
+    assert vs_asap_rows[("shifted", "TESTB", "greedy_critical", "W8_M8_F4")]["throughput_better_count_vs_asap"] == 1
+    assert vs_asap_rows[("shifted", "TESTB", "greedy_critical", "W8_M8_F4")]["stall_better_count_vs_asap"] == 1
+
 
 def test_analyze_shifted_study_cli(tmp_path: Path) -> None:
     sweep_csv = tmp_path / "sweep.csv"
@@ -183,6 +239,7 @@ def test_analyze_shifted_study_cli(tmp_path: Path) -> None:
         [
             _row("raw", "TEST", 4, 16, 0, 10, 3, 1.0, 0.2, 0.5),
             _row("shifted", "TEST", 4, 16, 0, 3, 3, 1.5, 0.3, 0.75),
+            _row("shifted", "TEST", 4, 16, 0, 3, 3, 1.6, 0.1, 0.8, policy="greedy_critical"),
         ],
     )
 
@@ -192,6 +249,9 @@ def test_analyze_shifted_study_cli(tmp_path: Path) -> None:
     assert (output_dir / "algorithm_summary.csv").exists()
     assert (output_dir / "algorithm_hq_summary.csv").exists()
     assert (output_dir / "bottleneck_summary.csv").exists()
+    assert (output_dir / "policy_variant_summary.csv").exists()
+    assert (output_dir / "policy_win_summary.csv").exists()
+    assert (output_dir / "policy_vs_asap_summary.csv").exists()
     assert (output_dir / "policy_latency_summary.csv").exists()
     assert (output_dir / "policy_saturation_summary.csv").exists()
     assert (output_dir / "policy_width_summary.csv").exists()
@@ -228,6 +288,7 @@ def _row(
     stall_rate: float,
     utilization: float,
     *,
+    policy: str = "asap",
     issue_width: int = 4,
     l_meas: int = 1,
     l_ff: int = 1,
@@ -244,7 +305,7 @@ def _row(
         "ff_chain_depth": ff_chain_depth,
         "ff_chain_depth_raw": ff_chain_depth if dag_variant == "raw" else 10,
         "ff_chain_depth_shifted": ff_chain_depth_shifted,
-        "policy": "asap",
+        "policy": policy,
         "release_mode": "next_cycle",
         "issue_width": issue_width,
         "l_meas": l_meas,

@@ -7,6 +7,8 @@ class SchedulingPolicy(str, Enum):
     ASAP = "asap"
     LAYER = "layer"
     GREEDY_CRITICAL = "greedy_critical"
+    SHIFTED_CRITICAL = "shifted_critical"
+    STALL_AWARE_SHIFTED = "stall_aware_shifted"
     RANDOM = "random"
 
 
