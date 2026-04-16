@@ -86,6 +86,7 @@ class JsonArtifactRepository(ArtifactRepository):
                     chain_depth=int(shifted_graph_payload["chain_depth"]),
                 )
             ),
+            shifted_unavailable_reason=_optional_str(payload.get("shifted_unavailable_reason")),
         )
 
 
@@ -99,6 +100,12 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _deserialize_nodes(payload: list[dict[str, Any]]) -> tuple[FFNode, ...]:

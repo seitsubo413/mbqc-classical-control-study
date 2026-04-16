@@ -22,6 +22,7 @@ METRICS_COLUMNS = [
     "dgraph_num_edges",
     "ff_chain_depth_raw",
     "ff_chain_depth_shifted",
+    "shifted_unavailable_reason",
     "depth_reference_kind",
     "depth_reference_depth",
     "elapsed_sec",
@@ -98,6 +99,7 @@ class CsvSummaryRepository:
                         "dgraph_num_edges": art.dgraph_num_edges,
                         "ff_chain_depth_raw": art.ff_chain_depth_raw,
                         "ff_chain_depth_shifted": art.ff_chain_depth_shifted,
+                        "shifted_unavailable_reason": art.shifted_unavailable_reason,
                         "depth_reference_kind": (
                             None if art.depth_reference is None else art.depth_reference.kind.value
                         ),

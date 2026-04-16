@@ -58,6 +58,7 @@ def test_backfill_shifted_graph_updates_existing_artifact(tmp_path: Path, monkey
         depth_reference=None,
         elapsed_sec=0.1,
         shifted_dependency_graph=None,
+        shifted_unavailable_reason="RuntimeError: prior failure",
     )
 
     raw_dir = tmp_path / "raw"
@@ -73,6 +74,7 @@ def test_backfill_shifted_graph_updates_existing_artifact(tmp_path: Path, monkey
     updated_payload = json.loads(path.read_text(encoding="utf-8"))
     assert updated_payload["ff_chain_depth_shifted"] == 2
     assert updated_payload["shifted_dependency_graph"]["chain_depth"] == 2
+    assert updated_payload["shifted_unavailable_reason"] is None
 
 
 def _artifact_payload(artifact: OnePercArtifact) -> dict[str, object]:
@@ -104,4 +106,5 @@ def _artifact_payload(artifact: OnePercArtifact) -> dict[str, object]:
         "depth_reference": None,
         "elapsed_sec": artifact.elapsed_sec,
         "shifted_dependency_graph": None,
+        "shifted_unavailable_reason": artifact.shifted_unavailable_reason,
     }

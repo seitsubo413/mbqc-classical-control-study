@@ -84,6 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 artifact,
                 ff_chain_depth_shifted=shifted_snapshot.chain_depth,
                 shifted_dependency_graph=shifted_snapshot,
+                shifted_unavailable_reason=None,
             )
         )
         updated += 1

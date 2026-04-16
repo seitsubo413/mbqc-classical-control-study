@@ -63,6 +63,7 @@ class OnePercArtifact:
     depth_reference: DepthReference | None
     elapsed_sec: float
     shifted_dependency_graph: DependencyGraphSnapshot | None = None
+    shifted_unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True)

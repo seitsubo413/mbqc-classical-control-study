@@ -31,6 +31,7 @@ class DependencyExtraction:
     graph_state_with_dependency: Any
     raw_snapshot: DependencyGraphSnapshot
     shifted_snapshot: DependencyGraphSnapshot | None
+    shifted_unavailable_reason: str | None
 
 
 class OneAdaptBackend(CompilerBackend):
@@ -71,7 +72,6 @@ class OneAdaptBackend(CompilerBackend):
             map_route = getattr(map_route_module, "map_route")
             empty_value = getattr(map_route_module, "Empty")
 
-            graph_state = generate_graph_state(payload.raw_gates, payload.logical_qubits)
             extraction = self._extract_dependency_graphs(
                 payload=payload,
                 determine_dependency=determine_dependency,
@@ -122,6 +122,7 @@ class OneAdaptBackend(CompilerBackend):
             depth_reference=None,
             elapsed_sec=elapsed_sec,
             shifted_dependency_graph=extraction.shifted_snapshot,
+            shifted_unavailable_reason=extraction.shifted_unavailable_reason,
         )
 
     def collect_dependency_snapshots(
@@ -205,29 +206,42 @@ class OneAdaptBackend(CompilerBackend):
             chain_depth=raw_depth,
         )
 
-        shifted_snapshot: DependencyGraphSnapshot | None = None
         try:
-            dgraph_shifted, _ = signal_shift(dgraph_raw.copy(), graph_state_with_dependency.copy())
-            shifted_nodes = self._build_ff_nodes(dgraph_shifted)
-            shifted_edges = self._build_ff_edges(dgraph_shifted)
-            shifted_depth = compute_ff_chain_depth_shifted(
-                tuple(node.node_id for node in shifted_nodes),
-                shifted_edges,
-            )
-            shifted_snapshot = DependencyGraphSnapshot(
-                nodes=shifted_nodes,
-                edges=shifted_edges,
-                chain_depth=shifted_depth,
-            )
-        except Exception:
+            shifted_result = signal_shift(dgraph_raw.copy(), graph_state_with_dependency.copy())
+        except Exception as exc:
             shifted_snapshot = None
+            shifted_unavailable_reason = self._format_shifted_unavailable_reason(exc)
+        else:
+            dgraph_shifted, _ = shifted_result
+            shifted_snapshot = self._build_shifted_snapshot(dgraph_shifted)
+            shifted_unavailable_reason = None
 
         return DependencyExtraction(
             dgraph_raw=dgraph_raw,
             graph_state_with_dependency=graph_state_with_dependency,
             raw_snapshot=raw_snapshot,
             shifted_snapshot=shifted_snapshot,
+            shifted_unavailable_reason=shifted_unavailable_reason,
         )
+
+    def _build_shifted_snapshot(self, dgraph_shifted: Any) -> DependencyGraphSnapshot:
+        shifted_nodes = self._build_ff_nodes(dgraph_shifted)
+        shifted_edges = self._build_ff_edges(dgraph_shifted)
+        shifted_depth = compute_ff_chain_depth_shifted(
+            tuple(node.node_id for node in shifted_nodes),
+            shifted_edges,
+        )
+        return DependencyGraphSnapshot(
+            nodes=shifted_nodes,
+            edges=shifted_edges,
+            chain_depth=shifted_depth,
+        )
+
+    def _format_shifted_unavailable_reason(self, exc: Exception) -> str:
+        message = str(exc).strip()
+        if not message:
+            return type(exc).__name__
+        return f"{type(exc).__name__}: {message}"
 
     def _is_timeout_guard(self, layer_index: float, empty_value: object) -> bool:
         if layer_index == empty_value:
