@@ -2,278 +2,321 @@
 from __future__ import annotations
 
 import abc
+import math
 import random
+from dataclasses import dataclass
+from typing import Sequence
 
-from mbqc_pipeline_sim.core.scheduler_registry import SchedulerRegistry
-from mbqc_pipeline_sim.core.scheduler_signals import (
-    build_scheduler_signals,
-    refined_stall_aware_issue_limit,
-    stall_aware_issue_limit,
-)
 from mbqc_pipeline_sim.domain.enums import SchedulerRegime, SchedulingPolicy
 from mbqc_pipeline_sim.domain.models import PipelineConfig, SimDAG
-from mbqc_pipeline_sim.domain.scheduler_models import SchedulerContext, SchedulerDecision
-from mbqc_pipeline_sim.ports.scheduler_policy import SchedulerPolicyPort
+
+_LOW_PRESSURE = 0.35
+_HIGH_PRESSURE = 0.75
+
+
+@dataclass(frozen=True)
+class SchedulerContext:
+    """Per-cycle state that some schedulers use for dynamic priorities."""
+
+    remaining_indegree: dict[int, int]
+    ff_waiting_count: int = 0
+    ff_in_flight_count: int = 0
+    meas_in_flight_count: int = 0
 
 
 class SchedulerBase(abc.ABC):
-    """Choose nodes to issue from the current ready set."""
-
-    policy_id: SchedulingPolicy
+    """Pick up to *limit* nodes from *ready* to issue this cycle."""
 
     def __init__(self, dag: SimDAG, config: PipelineConfig) -> None:
         self._dag = dag
         self._config = config
 
     @abc.abstractmethod
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
         ...
 
 
 class ASAPScheduler(SchedulerBase):
     """Issue nodes in topological-level order; ties broken by node-id."""
 
-    policy_id = SchedulingPolicy.ASAP
-
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        ordered = sorted(context.ready_nodes, key=lambda node: (node.topo_level, node.node_id))
-        return _decision_from_views(ordered, context.issue_limit)
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        ordered = sorted(ready, key=lambda n: (self._dag.topo_level.get(n, 0), n))
+        return ordered[:limit]
 
 
 class LayerScheduler(SchedulerBase):
     """Only issue nodes from the *lowest* topological level present in *ready*."""
 
-    policy_id = SchedulingPolicy.LAYER
-
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        if not context.ready_nodes:
-            return SchedulerDecision(selected_node_ids=())
-        min_level = min(node.topo_level for node in context.ready_nodes)
-        same_level = sorted(
-            (node for node in context.ready_nodes if node.topo_level == min_level),
-            key=lambda node: node.node_id,
-        )
-        return _decision_from_views(same_level, context.issue_limit)
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        if not ready:
+            return []
+        min_level = min(self._dag.topo_level.get(n, 0) for n in ready)
+        same_level = [n for n in ready if self._dag.topo_level.get(n, 0) == min_level]
+        same_level.sort()
+        return same_level[:limit]
 
 
 class GreedyCriticalScheduler(SchedulerBase):
     """Prioritise nodes whose remaining critical path is longest (OoO)."""
 
-    policy_id = SchedulingPolicy.GREEDY_CRITICAL
-
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
         ordered = sorted(
-            context.ready_nodes,
-            key=lambda node: (-node.remaining_depth, node.node_id),
+            ready,
+            key=lambda n: (-self._dag.remaining_depth.get(n, 0), n),
         )
-        return _decision_from_views(ordered, context.issue_limit)
+        return ordered[:limit]
 
 
 class ShiftedCriticalScheduler(SchedulerBase):
-    """Prioritise nodes that are both critical and likely to unlock successors."""
+    """Prioritise shifted-topology criticality while keeping early layers flowing."""
 
-    policy_id = SchedulingPolicy.SHIFTED_CRITICAL
-
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
         ordered = sorted(
-            context.ready_nodes,
-            key=lambda node: (-node.remaining_depth, -node.unlock_count, node.node_id),
+            ready,
+            key=lambda n: (
+                -self._dag.remaining_depth.get(n, 0),
+                self._dag.topo_level.get(n, 0),
+                -len(self._dag.adjacency.get(n, [])),
+                n,
+            ),
         )
-        return _decision_from_views(ordered, context.issue_limit)
+        return ordered[:limit]
 
 
 class StallAwareShiftedScheduler(SchedulerBase):
-    """Shifted-aware scheduler that reacts to FF backpressure."""
+    """Exploit shifted DAG unlocks when FF width is the active bottleneck."""
 
-    policy_id = SchedulingPolicy.STALL_AWARE_SHIFTED
+    def __init__(self, dag: SimDAG, config: PipelineConfig) -> None:
+        super().__init__(dag, config)
+        self._fallback = ShiftedCriticalScheduler(dag, config)
 
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        signals = build_scheduler_signals(context)
-        effective_limit = stall_aware_issue_limit(context, signals)
-        if signals.ff_backpressure_active:
-            ordered = sorted(
-                context.ready_nodes,
-                key=lambda node: (node.unlock_count, -node.remaining_depth, node.node_id),
-            )
-            return _decision_from_views(
-                ordered,
-                effective_limit,
-                rationale="ff_backpressure",
-            )
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        if not ready:
+            return []
+        if not self._is_ff_bottleneck() or context is None:
+            return self._fallback.select(ready, limit, context)
 
         ordered = sorted(
-            context.ready_nodes,
-            key=lambda node: (-node.remaining_depth, -node.unlock_count, node.node_id),
+            ready,
+            key=lambda n: (
+                -_unlock_count(n, self._dag, context.remaining_indegree),
+                -self._dag.remaining_depth.get(n, 0),
+                self._dag.topo_level.get(n, 0),
+                -len(self._dag.adjacency.get(n, [])),
+                n,
+            ),
         )
-        return _decision_from_views(
-            ordered,
-            effective_limit,
-            rationale="shifted_critical_fallback",
-        )
+        return ordered[:limit]
+
+    def _is_ff_bottleneck(self) -> bool:
+        ff_width = self._config.ff_width
+        if ff_width is None:
+            return False
+        if ff_width < self._config.issue_width:
+            return True
+        meas_width = self._config.meas_width
+        return meas_width is not None and ff_width < meas_width
 
 
 class RefinedStallAwareShiftedScheduler(SchedulerBase):
-    """Shifted-aware scheduler with pressure-dependent issue throttling."""
+    """Pressure-proportional issue throttling on top of StallAwareShifted."""
 
-    policy_id = SchedulingPolicy.STALL_AWARE_SHIFTED_REFINED
+    def __init__(self, dag: SimDAG, config: PipelineConfig) -> None:
+        super().__init__(dag, config)
+        self._base = StallAwareShiftedScheduler(dag, config)
 
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        signals = build_scheduler_signals(context)
-        effective_limit = refined_stall_aware_issue_limit(context, signals)
-        if signals.ff_pressure_score > 0.0:
-            ordered = sorted(
-                context.ready_nodes,
-                key=lambda node: (node.unlock_count, -node.remaining_depth, node.node_id),
-            )
-            return _decision_from_views(
-                ordered,
-                effective_limit,
-                rationale="ff_pressure_throttled",
-            )
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        effective_limit = self._throttled_limit(limit, context)
+        return self._base.select(ready, effective_limit, context)
 
-        ordered = sorted(
-            context.ready_nodes,
-            key=lambda node: (-node.remaining_depth, -node.unlock_count, node.node_id),
-        )
-        return _decision_from_views(
-            ordered,
-            effective_limit,
-            rationale="shifted_critical_fallback",
-        )
+    def _throttled_limit(self, limit: int, context: SchedulerContext | None) -> int:
+        ff_width = self._config.ff_width
+        if ff_width is None or ff_width >= limit or context is None:
+            return limit
+        if not self._base._is_ff_bottleneck():
+            return limit
+
+        pressure = _ff_pressure_score(context, ff_width)
+        if pressure <= _LOW_PRESSURE:
+            return limit
+        if pressure >= _HIGH_PRESSURE:
+            return ff_width
+
+        progress = (pressure - _LOW_PRESSURE) / (_HIGH_PRESSURE - _LOW_PRESSURE)
+        scaled = limit - math.ceil(progress * (limit - ff_width))
+        return max(ff_width, min(limit, scaled))
 
 
 class RegimeSwitchScheduler(SchedulerBase):
-    """Reproducible v1 regime switch used in the original co-design sweep."""
-
-    policy_id = SchedulingPolicy.REGIME_SWITCH
+    """Switch between ASAP / ShiftedCritical / StallAware based on runtime regime."""
 
     def __init__(self, dag: SimDAG, config: PipelineConfig) -> None:
         super().__init__(dag, config)
         self._asap = ASAPScheduler(dag, config)
-        self._shifted_critical = ShiftedCriticalScheduler(dag, config)
-        self._stall_aware = StallAwareShiftedScheduler(dag, config)
+        self._shifted = ShiftedCriticalScheduler(dag, config)
+        self._stall = StallAwareShiftedScheduler(dag, config)
 
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        signals = build_scheduler_signals(context)
-        if signals.is_ff_bottleneck and signals.ff_backpressure_active:
-            decision = self._stall_aware.select(context)
-            return SchedulerDecision(
-                selected_node_ids=decision.selected_node_ids,
-                rationale=SchedulerRegime.STALL_AWARE.value,
-            )
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        regime = self._recommend_regime(context)
+        if regime is SchedulerRegime.STALL_AWARE:
+            return self._stall.select(ready, limit, context)
+        if regime is SchedulerRegime.ASAP:
+            return self._asap.select(ready, limit, context)
+        return self._shifted.select(ready, limit, context)
 
-        if signals.is_fully_provisioned:
-            decision = self._asap.select(context)
-            return SchedulerDecision(
-                selected_node_ids=decision.selected_node_ids,
-                rationale=SchedulerRegime.ASAP.value,
-            )
+    def _recommend_regime(self, context: SchedulerContext | None) -> SchedulerRegime:
+        if self._stall._is_ff_bottleneck() and context is not None and context.ff_waiting_count > 0:
+            return SchedulerRegime.STALL_AWARE
+        if self._is_fully_provisioned() and (context is None or context.ff_waiting_count == 0):
+            return SchedulerRegime.ASAP
+        return SchedulerRegime.SHIFTED_CRITICAL
 
-        decision = self._shifted_critical.select(context)
-        return SchedulerDecision(
-            selected_node_ids=decision.selected_node_ids,
-            rationale=SchedulerRegime.SHIFTED_CRITICAL.value,
-        )
+    def _is_fully_provisioned(self) -> bool:
+        issue = self._config.issue_width
+        eff_meas = self._config.meas_width if self._config.meas_width is not None else issue
+        eff_ff = self._config.ff_width if self._config.ff_width is not None else issue
+        return eff_meas >= issue and eff_ff >= issue
 
 
 class RefinedRegimeSwitchScheduler(SchedulerBase):
-    """Pressure-aware refinement of the original regime switch heuristic."""
-
-    policy_id = SchedulingPolicy.REGIME_SWITCH_REFINED
+    """Pressure-aware refinement: uses ff_pressure_score to guide regime selection."""
 
     def __init__(self, dag: SimDAG, config: PipelineConfig) -> None:
         super().__init__(dag, config)
         self._asap = ASAPScheduler(dag, config)
-        self._shifted_critical = ShiftedCriticalScheduler(dag, config)
-        self._stall_aware = StallAwareShiftedScheduler(dag, config)
+        self._shifted = ShiftedCriticalScheduler(dag, config)
+        self._stall = StallAwareShiftedScheduler(dag, config)
 
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        signals = build_scheduler_signals(context)
-        if signals.recommended_regime is SchedulerRegime.STALL_AWARE:
-            decision = self._stall_aware.select(context)
-            return SchedulerDecision(
-                selected_node_ids=decision.selected_node_ids,
-                rationale=SchedulerRegime.STALL_AWARE.value,
-            )
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        regime = self._recommend_regime(context)
+        if regime is SchedulerRegime.STALL_AWARE:
+            return self._stall.select(ready, limit, context)
+        if regime is SchedulerRegime.ASAP:
+            return self._asap.select(ready, limit, context)
+        return self._shifted.select(ready, limit, context)
 
-        if signals.recommended_regime is SchedulerRegime.ASAP:
-            decision = self._asap.select(context)
-            return SchedulerDecision(
-                selected_node_ids=decision.selected_node_ids,
-                rationale=SchedulerRegime.ASAP.value,
-            )
+    def _recommend_regime(self, context: SchedulerContext | None) -> SchedulerRegime:
+        ff_width = self._config.ff_width
+        if ff_width is None or context is None:
+            return SchedulerRegime.SHIFTED_CRITICAL
 
-        decision = self._shifted_critical.select(context)
-        return SchedulerDecision(
-            selected_node_ids=decision.selected_node_ids,
-            rationale=SchedulerRegime.SHIFTED_CRITICAL.value,
-        )
+        is_bottleneck = self._stall._is_ff_bottleneck()
+        pressure = _ff_pressure_score(context, ff_width)
+
+        if is_bottleneck and pressure >= _HIGH_PRESSURE:
+            return SchedulerRegime.STALL_AWARE
+
+        issue = self._config.issue_width
+        eff_meas = self._config.meas_width if self._config.meas_width is not None else issue
+        eff_ff = self._config.ff_width if self._config.ff_width is not None else issue
+        if eff_meas >= issue and eff_ff >= issue and pressure <= _LOW_PRESSURE:
+            return SchedulerRegime.ASAP
+        return SchedulerRegime.SHIFTED_CRITICAL
 
 
 class RandomScheduler(SchedulerBase):
     """Uniformly random selection from ready set (baseline)."""
 
-    policy_id = SchedulingPolicy.RANDOM
-
-    def __init__(self, dag: SimDAG, config: PipelineConfig) -> None:
+    def __init__(self, dag: SimDAG, config: PipelineConfig, *, seed: int = 0) -> None:
         super().__init__(dag, config)
-        self._rng = random.Random(config.seed)
+        self._rng = random.Random(seed)
 
-    def select(self, context: SchedulerContext) -> SchedulerDecision:
-        pool = list(context.ready_nodes)
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        pool = list(ready)
         self._rng.shuffle(pool)
-        return _decision_from_views(pool, context.issue_limit)
+        return pool[:limit]
 
 
 def build_scheduler(
     policy: SchedulingPolicy,
     dag: SimDAG,
-    *,
     config: PipelineConfig,
-) -> SchedulerPolicyPort:
-    return _DEFAULT_REGISTRY.build(policy, dag, config)
-
-
-def _decision_from_views(
-    views: list[object],
-    limit: int,
     *,
-    rationale: str | None = None,
-) -> SchedulerDecision:
-    selected = tuple(view.node_id for view in views[:limit])
-    return SchedulerDecision(selected_node_ids=selected, rationale=rationale)
+    seed: int = 0,
+) -> SchedulerBase:
+    if policy == SchedulingPolicy.ASAP:
+        return ASAPScheduler(dag, config)
+    if policy == SchedulingPolicy.LAYER:
+        return LayerScheduler(dag, config)
+    if policy == SchedulingPolicy.GREEDY_CRITICAL:
+        return GreedyCriticalScheduler(dag, config)
+    if policy == SchedulingPolicy.SHIFTED_CRITICAL:
+        return ShiftedCriticalScheduler(dag, config)
+    if policy == SchedulingPolicy.STALL_AWARE_SHIFTED:
+        return StallAwareShiftedScheduler(dag, config)
+    if policy == SchedulingPolicy.STALL_AWARE_SHIFTED_REFINED:
+        return RefinedStallAwareShiftedScheduler(dag, config)
+    if policy == SchedulingPolicy.REGIME_SWITCH:
+        return RegimeSwitchScheduler(dag, config)
+    if policy == SchedulingPolicy.REGIME_SWITCH_REFINED:
+        return RefinedRegimeSwitchScheduler(dag, config)
+    if policy == SchedulingPolicy.RANDOM:
+        return RandomScheduler(dag, config, seed=seed)
+    raise ValueError(f"Unknown policy: {policy}")
 
 
-def _build_default_registry() -> SchedulerRegistry:
-    registry = SchedulerRegistry()
-    registry.register(SchedulingPolicy.ASAP, lambda dag, config: ASAPScheduler(dag, config))
-    registry.register(SchedulingPolicy.LAYER, lambda dag, config: LayerScheduler(dag, config))
-    registry.register(
-        SchedulingPolicy.GREEDY_CRITICAL,
-        lambda dag, config: GreedyCriticalScheduler(dag, config),
+# ── module-level helpers ──────────────────────────────────────────────────────
+
+def _unlock_count(node_id: int, dag: SimDAG, remaining_indegree: dict[int, int]) -> int:
+    return sum(
+        1
+        for succ in dag.adjacency.get(node_id, [])
+        if remaining_indegree.get(succ, 0) == 1
     )
-    registry.register(
-        SchedulingPolicy.SHIFTED_CRITICAL,
-        lambda dag, config: ShiftedCriticalScheduler(dag, config),
-    )
-    registry.register(
-        SchedulingPolicy.STALL_AWARE_SHIFTED,
-        lambda dag, config: StallAwareShiftedScheduler(dag, config),
-    )
-    registry.register(
-        SchedulingPolicy.STALL_AWARE_SHIFTED_REFINED,
-        lambda dag, config: RefinedStallAwareShiftedScheduler(dag, config),
-    )
-    registry.register(
-        SchedulingPolicy.REGIME_SWITCH,
-        lambda dag, config: RegimeSwitchScheduler(dag, config),
-    )
-    registry.register(
-        SchedulingPolicy.REGIME_SWITCH_REFINED,
-        lambda dag, config: RefinedRegimeSwitchScheduler(dag, config),
-    )
-    registry.register(SchedulingPolicy.RANDOM, lambda dag, config: RandomScheduler(dag, config))
-    return registry
 
 
-_DEFAULT_REGISTRY = _build_default_registry()
+def _ff_pressure_score(context: SchedulerContext, ff_width: int) -> float:
+    queue_p = min(context.ff_waiting_count / ff_width, 1.0)
+    meas_p = min(context.meas_in_flight_count / ff_width, 1.0)
+    ff_p = min(context.ff_in_flight_count / ff_width, 1.0)
+    return round((queue_p + meas_p + ff_p) / 3.0, 6)
