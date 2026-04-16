@@ -1,0 +1,9 @@
+# Study Namespaces
+
+`results/summary` と `results/figures` は既存 pipeline study の baseline です。
+
+新しい比較実験は `results/studies/<study_id>/<experiment_id>/...` 配下に出力し、既存 CSV / figure と混ぜない方針を取ります。
+
+shifted DAG dynamic study の既定 namespace:
+
+- `13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/`

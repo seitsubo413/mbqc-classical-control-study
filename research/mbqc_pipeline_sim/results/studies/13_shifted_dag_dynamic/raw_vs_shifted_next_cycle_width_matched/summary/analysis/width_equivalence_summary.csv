@@ -1,0 +1,13 @@
+algorithm,issue_width,policy,case_count,inactive_case_count,inactive_case_rate,max_width_profile_count
+QAOA,4,asap,60,60,1.0,4
+QAOA,4,greedy_critical,60,60,1.0,4
+QAOA,8,asap,60,0,0.0,4
+QAOA,8,greedy_critical,60,0,0.0,4
+QFT,4,asap,40,40,1.0,4
+QFT,4,greedy_critical,40,40,1.0,4
+QFT,8,asap,40,0,0.0,4
+QFT,8,greedy_critical,40,0,0.0,4
+VQE,4,asap,60,60,1.0,4
+VQE,4,greedy_critical,60,60,1.0,4
+VQE,8,asap,60,0,0.0,4
+VQE,8,greedy_critical,60,0,0.0,4
