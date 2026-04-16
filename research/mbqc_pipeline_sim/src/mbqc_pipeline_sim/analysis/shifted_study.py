@@ -106,6 +106,9 @@ class ShiftedStudyOutputs:
     algorithm_summary: tuple[dict[str, object], ...]
     algorithm_hq_summary: tuple[dict[str, object], ...]
     bottleneck_summary: tuple[dict[str, object], ...]
+    policy_variant_summary: tuple[dict[str, object], ...]
+    policy_win_summary: tuple[dict[str, object], ...]
+    policy_vs_asap_summary: tuple[dict[str, object], ...]
     policy_latency_summary: tuple[dict[str, object], ...]
     policy_saturation_summary: tuple[dict[str, object], ...]
     policy_width_summary: tuple[dict[str, object], ...]
@@ -212,6 +215,9 @@ def build_shifted_study_outputs(
             },
         ),
         bottleneck_summary=_build_bottleneck_summary_rows(effects),
+        policy_variant_summary=_build_policy_variant_summary_rows(observation_tuple),
+        policy_win_summary=_build_policy_win_summary_rows(observation_tuple),
+        policy_vs_asap_summary=_build_policy_vs_asap_summary_rows(observation_tuple),
         policy_latency_summary=_summaries_to_rows(
             effects,
             lambda effect: {
@@ -259,6 +265,9 @@ def write_shifted_study_outputs(outputs: ShiftedStudyOutputs, output_dir: Path) 
     _write_csv(output_dir / "algorithm_summary.csv", outputs.algorithm_summary)
     _write_csv(output_dir / "algorithm_hq_summary.csv", outputs.algorithm_hq_summary)
     _write_csv(output_dir / "bottleneck_summary.csv", outputs.bottleneck_summary)
+    _write_csv(output_dir / "policy_variant_summary.csv", outputs.policy_variant_summary)
+    _write_csv(output_dir / "policy_win_summary.csv", outputs.policy_win_summary)
+    _write_csv(output_dir / "policy_vs_asap_summary.csv", outputs.policy_vs_asap_summary)
     _write_csv(output_dir / "policy_latency_summary.csv", outputs.policy_latency_summary)
     _write_csv(output_dir / "policy_saturation_summary.csv", outputs.policy_saturation_summary)
     _write_csv(output_dir / "policy_width_summary.csv", outputs.policy_width_summary)
@@ -337,6 +346,188 @@ def _build_bottleneck_summary_rows(
         }
         row.update(_summary_row_to_mapping(summary))
         rows.append(row)
+    return tuple(rows)
+
+
+def _build_policy_variant_summary_rows(
+    observations: Iterable[SweepObservation],
+) -> tuple[dict[str, object], ...]:
+    grouped: dict[tuple[str, str, str, str, str], list[SweepObservation]] = defaultdict(list)
+    for observation in observations:
+        grouped[
+            (
+                observation.dag_variant,
+                observation.algorithm,
+                observation.policy,
+                _latency_profile(observation.l_meas, observation.l_ff),
+                _width_profile(
+                    observation.issue_width,
+                    observation.meas_width,
+                    observation.ff_width,
+                ),
+            )
+        ].append(observation)
+
+    rows: list[dict[str, object]] = []
+    for key in sorted(grouped):
+        dag_variant, algorithm, policy, latency_profile, width_profile = key
+        group = grouped[key]
+        rows.append(
+            {
+                "dag_variant": dag_variant,
+                "algorithm": algorithm,
+                "policy": policy,
+                "latency_profile": latency_profile,
+                "width_profile": width_profile,
+                "observation_count": len(group),
+                "unique_seed_count": len({item.dag_seed for item in group}),
+                "throughput_median": _round(_median(item.throughput for item in group)),
+                "stall_rate_median": _round(_median(item.stall_rate for item in group)),
+                "utilization_median": _round(_median(item.utilization for item in group)),
+            }
+        )
+    return tuple(rows)
+
+
+def _build_policy_win_summary_rows(
+    observations: Iterable[SweepObservation],
+) -> tuple[dict[str, object], ...]:
+    grouped: dict[tuple[object, ...], list[SweepObservation]] = defaultdict(list)
+    for observation in observations:
+        grouped[
+            (
+                observation.dag_variant,
+                observation.algorithm,
+                observation.hardware_size,
+                observation.logical_qubits,
+                observation.dag_seed,
+                observation.release_mode,
+                observation.issue_width,
+                observation.l_meas,
+                observation.l_ff,
+                observation.meas_width,
+                observation.ff_width,
+            )
+        ].append(observation)
+
+    summary: dict[tuple[str, str, str, str], dict[str, int]] = defaultdict(
+        lambda: {
+            "scenario_count": 0,
+            "throughput_win_count": 0,
+            "stall_win_count": 0,
+            "joint_win_count": 0,
+        }
+    )
+    for scenario in grouped.values():
+        best_throughput = max(item.throughput for item in scenario)
+        best_stall = min(item.stall_rate for item in scenario)
+        for item in scenario:
+            key = (
+                item.dag_variant,
+                item.algorithm,
+                item.policy,
+                _width_profile(item.issue_width, item.meas_width, item.ff_width),
+            )
+            summary[key]["scenario_count"] += 1
+            throughput_winner = math.isclose(item.throughput, best_throughput)
+            stall_winner = math.isclose(item.stall_rate, best_stall)
+            if throughput_winner:
+                summary[key]["throughput_win_count"] += 1
+            if stall_winner:
+                summary[key]["stall_win_count"] += 1
+            if throughput_winner and stall_winner:
+                summary[key]["joint_win_count"] += 1
+
+    rows: list[dict[str, object]] = []
+    for key in sorted(summary):
+        dag_variant, algorithm, policy, width_profile = key
+        counts = summary[key]
+        scenario_count = counts["scenario_count"]
+        rows.append(
+            {
+                "dag_variant": dag_variant,
+                "algorithm": algorithm,
+                "policy": policy,
+                "width_profile": width_profile,
+                "scenario_count": scenario_count,
+                "throughput_win_count": counts["throughput_win_count"],
+                "throughput_win_rate": _round(counts["throughput_win_count"] / scenario_count),
+                "stall_win_count": counts["stall_win_count"],
+                "stall_win_rate": _round(counts["stall_win_count"] / scenario_count),
+                "joint_win_count": counts["joint_win_count"],
+                "joint_win_rate": _round(counts["joint_win_count"] / scenario_count),
+            }
+        )
+    return tuple(rows)
+
+
+def _build_policy_vs_asap_summary_rows(
+    observations: Iterable[SweepObservation],
+) -> tuple[dict[str, object], ...]:
+    grouped: dict[tuple[object, ...], dict[str, SweepObservation]] = defaultdict(dict)
+    for observation in observations:
+        grouped[
+            (
+                observation.dag_variant,
+                observation.algorithm,
+                observation.hardware_size,
+                observation.logical_qubits,
+                observation.dag_seed,
+                observation.release_mode,
+                observation.issue_width,
+                observation.l_meas,
+                observation.l_ff,
+                observation.meas_width,
+                observation.ff_width,
+            )
+        ][observation.policy] = observation
+
+    summary: dict[tuple[str, str, str, str], list[dict[str, float]]] = defaultdict(list)
+    for scenario in grouped.values():
+        asap = scenario.get("asap")
+        if asap is None:
+            continue
+        width_profile = _width_profile(asap.issue_width, asap.meas_width, asap.ff_width)
+        for policy, observation in scenario.items():
+            summary[(asap.dag_variant, asap.algorithm, policy, width_profile)].append(
+                {
+                    "throughput_delta_pct": _pct_change(asap.throughput, observation.throughput),
+                    "stall_delta_pct": _pct_change(asap.stall_rate, observation.stall_rate),
+                    "utilization_delta_pct": _pct_change(asap.utilization, observation.utilization),
+                    "throughput_better": 1.0 if observation.throughput > asap.throughput else 0.0,
+                    "stall_better": 1.0 if observation.stall_rate < asap.stall_rate else 0.0,
+                    "joint_better": 1.0
+                    if observation.throughput > asap.throughput and observation.stall_rate < asap.stall_rate
+                    else 0.0,
+                }
+            )
+
+    rows: list[dict[str, object]] = []
+    for key in sorted(summary):
+        dag_variant, algorithm, policy, width_profile = key
+        group = summary[key]
+        pair_count = len(group)
+        rows.append(
+            {
+                "dag_variant": dag_variant,
+                "algorithm": algorithm,
+                "policy": policy,
+                "width_profile": width_profile,
+                "pair_count": pair_count,
+                "throughput_delta_pct_median_vs_asap": _round(
+                    _median(item["throughput_delta_pct"] for item in group)
+                ),
+                "stall_delta_pct_median_vs_asap": _round(
+                    _median(item["stall_delta_pct"] for item in group)
+                ),
+                "utilization_delta_pct_median_vs_asap": _round(
+                    _median(item["utilization_delta_pct"] for item in group)
+                ),
+                "throughput_better_count_vs_asap": int(sum(item["throughput_better"] for item in group)),
+                "stall_better_count_vs_asap": int(sum(item["stall_better"] for item in group)),
+                "joint_better_count_vs_asap": int(sum(item["joint_better"] for item in group)),
+            }
+        )
     return tuple(rows)
 
 

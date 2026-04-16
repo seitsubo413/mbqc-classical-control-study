@@ -1,0 +1,23 @@
+C:\Users\tsuboi\Documents\mbqc-classical-control-study\research\mbqc_pipeline_sim\src\mbqc_pipeline_sim\cli\sweep.py:148: UserWarning: Skipping QFT_H8_Q64_seed0.json (shifted): Shifted dependency graph is not available in this artifact
+  dags = load_all_dags(args.artifacts_dir, dag_variants=dag_variants)
+C:\Users\tsuboi\Documents\mbqc-classical-control-study\research\mbqc_pipeline_sim\src\mbqc_pipeline_sim\cli\sweep.py:148: UserWarning: Skipping QFT_H8_Q64_seed1.json (shifted): Shifted dependency graph is not available in this artifact
+  dags = load_all_dags(args.artifacts_dir, dag_variants=dag_variants)
+C:\Users\tsuboi\Documents\mbqc-classical-control-study\research\mbqc_pipeline_sim\src\mbqc_pipeline_sim\cli\sweep.py:148: UserWarning: Skipping QFT_H8_Q64_seed2.json (shifted): Shifted dependency graph is not available in this artifact
+  dags = load_all_dags(args.artifacts_dir, dag_variants=dag_variants)
+C:\Users\tsuboi\Documents\mbqc-classical-control-study\research\mbqc_pipeline_sim\src\mbqc_pipeline_sim\cli\sweep.py:148: UserWarning: Skipping QFT_H8_Q64_seed3.json (shifted): Shifted dependency graph is not available in this artifact
+  dags = load_all_dags(args.artifacts_dir, dag_variants=dag_variants)
+C:\Users\tsuboi\Documents\mbqc-classical-control-study\research\mbqc_pipeline_sim\src\mbqc_pipeline_sim\cli\sweep.py:148: UserWarning: Skipping QFT_H8_Q64_seed4.json (shifted): Shifted dependency graph is not available in this artifact
+  dags = load_all_dags(args.artifacts_dir, dag_variants=dag_variants)
+Sweep: 85 DAGs Å~ 64 configs = 5440 runs
+  [500/5440] 0.9s elapsed, ~9s remaining
+  [1000/5440] 9.6s elapsed, ~43s remaining
+  [1500/5440] 58.8s elapsed, ~154s remaining
+  [2000/5440] 152.7s elapsed, ~263s remaining
+  [2500/5440] 160.2s elapsed, ~188s remaining
+  [3000/5440] 308.1s elapsed, ~251s remaining
+  [3500/5440] 436.5s elapsed, ~242s remaining
+  [4000/5440] 439.0s elapsed, ~158s remaining
+  [4500/5440] 443.8s elapsed, ~93s remaining
+  [5000/5440] 469.2s elapsed, ~41s remaining
+  [5440/5440] 533.9s elapsed, ~0s remaining
+Done: 5440 results Å® c:\Users\tsuboi\Documents\mbqc-classical-control-study\research\mbqc_pipeline_sim\results\studies\rerun_20260416\13_shifted_dag_dynamic\raw_vs_shifted_next_cycle_width_matched\summary\sweep.csv  (534.0s)
