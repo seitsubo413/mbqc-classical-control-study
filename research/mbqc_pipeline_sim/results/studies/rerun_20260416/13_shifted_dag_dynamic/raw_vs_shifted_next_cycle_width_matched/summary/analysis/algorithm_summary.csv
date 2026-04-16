@@ -1,0 +1,4 @@
+algorithm,pair_count,unique_seed_count,depth_reduction_pct_median,throughput_gain_pct_median,throughput_gain_pct_q1,throughput_gain_pct_q3,stall_reduction_pct_median,utilization_gain_pct_median,raw_throughput_median,raw_stall_rate_median,throughput_positive_count,throughput_zero_count,throughput_negative_count,throughput_sign_test_pvalue
+QAOA,960,5,97.368421,7.272997,1.521218,55.421692,87.795915,7.273034,3.781991,0.042453,779,181,0,0.0
+QFT,640,5,90.652286,10.332056,4.247333,22.29301,91.775517,10.33204,3.71979,0.049854,640,0,0,0.0
+VQE,960,5,97.142857,1.459801,0.0,11.243542,0.0,1.459789,3.897241,0.014167,595,365,0,0.0
