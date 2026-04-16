@@ -166,7 +166,7 @@ stall regression (`W8_M8_F4` など) は scheduling choice によって軽減で
    - `W8_M8_F4` の stall regression 対策を主眼に置く
 
 3. **RegimeSwitch**
-   - raw stall / saturation / width regime に応じて `ASAP` と `GreedyCritical` を切り替える
+   - width / backpressure regime に応じて `asap`, `shifted_critical`, `stall_aware_shifted` を切り替える
    - まずは学習器ではなくルールベースで始める
 
 完了条件:
@@ -227,6 +227,64 @@ stall regression (`W8_M8_F4` など) は scheduling choice によって軽減で
 - 論文や発表で “適用限界” を述べるための補助分析
 
 ## Concrete Implementation Tasks
+
+## Scheduler Architecture Baseline
+
+co-design 実装は、既存 simulator に policy-specific な条件分岐を増やす形では進めない。
+その代わり、scheduler layer を以下の責務で分離する。
+
+### Design Principles
+
+- **Single Responsibility**
+  - simulator は cycle progression のみ担当する
+  - feature builder は runtime state から scheduler input を構築する
+  - scheduler policy は node selection のみ担当する
+- **Open/Closed**
+  - policy 追加時に simulator 本体の条件分岐を増やさない
+  - registry に factory を登録するだけで拡張できるようにする
+- **Dependency Inversion**
+  - simulator は具体 scheduler 実装ではなく policy port に依存する
+- **Typed Context**
+  - policy 間の入出力は `dict` ではなく dataclass と Protocol で表現する
+
+### Current Scheduler Architecture
+
+基盤として以下の型とレイヤを導入済み:
+
+- `domain/scheduler_models.py`
+  - `ReadyNodeView`
+  - `SchedulerContext`
+  - `SchedulerDecision`
+- `ports/scheduler_policy.py`
+  - `SchedulerPolicyPort`
+  - `SchedulerFactory`
+- `core/scheduler_features.py`
+  - ready set と runtime state から `SchedulerContext` を組み立てる pure helper
+- `core/scheduler_registry.py`
+  - `SchedulingPolicy -> factory` の registry
+- `core/scheduler.py`
+  - 既存 policy (`ASAP`, `Layer`, `GreedyCritical`, `Random`) の実装
+- `core/simulator.py`
+  - scheduler へ `SchedulerContext` を渡し、`SchedulerDecision` を受け取る orchestrator
+
+### Extension Rule
+
+新 policy は以下を守る:
+
+1. `SchedulerPolicyPort` を満たす
+2. `SchedulerContext` だけを入力にする
+3. `SchedulerDecision` だけを返す
+4. simulator の cycle logic や queue mutation に直接触れない
+
+### Next Step On This Architecture
+
+この基盤の上に、次に以下を実装する:
+
+- `shifted_critical`
+- `stall_aware_shifted`
+- 必要なら `regime_switch`
+
+これらはすべて、既存 registry に追加するだけで CLI / sweep から選択できる形に保つ。
 
 ### Simulator / Scheduler
 

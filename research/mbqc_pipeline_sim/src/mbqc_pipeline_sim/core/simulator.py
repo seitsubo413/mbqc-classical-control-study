@@ -5,6 +5,7 @@ from mbqc_pipeline_sim.domain.enums import NodeState, ReleaseMode
 from mbqc_pipeline_sim.domain.errors import SimulationDeadlockError
 from mbqc_pipeline_sim.domain.models import CycleRecord, PipelineConfig, SimDAG, SimResult
 from mbqc_pipeline_sim.core.pipeline_stage import LatencyPipeline
+from mbqc_pipeline_sim.core.scheduler_features import build_scheduler_context
 from mbqc_pipeline_sim.core.scheduler import build_scheduler
 
 
@@ -33,7 +34,7 @@ class MbqcPipelineSimulator:
 
         meas_pipe = LatencyPipeline(config.l_meas, width=config.meas_width)
         ff_pipe = LatencyPipeline(config.l_ff, width=config.ff_width)
-        scheduler = build_scheduler(config.policy, dag, seed=config.seed)
+        scheduler = build_scheduler(config.policy, dag, config=config)
 
         cycle = 0
         done_count = 0
@@ -77,7 +78,21 @@ class MbqcPipelineSimulator:
             # ── Phase 3: Issue from ready queue ──
             meas_slots = meas_pipe.available_input_slots
             issue_limit = config.issue_width if meas_slots is None else min(config.issue_width, meas_slots)
-            to_issue = scheduler.select(ready, issue_limit)
+            context = build_scheduler_context(
+                dag=dag,
+                config=config,
+                cycle=cycle,
+                ready=tuple(ready),
+                issue_limit=issue_limit,
+                remaining_indegree=remaining_indeg,
+                waiting_ff_count=len(ff_waiting),
+                in_flight_meas_count=meas_pipe.occupancy,
+                in_flight_ff_count=ff_pipe.occupancy,
+                meas_slots_available=meas_slots,
+                ff_slots_available=ff_pipe.available_input_slots,
+            )
+            decision = scheduler.select(context)
+            to_issue = list(decision.selected_node_ids)
             if to_issue:
                 issued_set = set(to_issue)
                 ready[:] = [nid for nid in ready if nid not in issued_set]

@@ -1,0 +1,11 @@
+scope,algorithm,hardware_size,logical_qubits,raw_seed_count,shifted_seed_count,missing_shifted_seed_count,paired_seed_count,is_complete_pair_set
+overall,ALL,,,45,40,5,40,no
+algorithm_hq,QAOA,4,16,5,5,0,5,yes
+algorithm_hq,QAOA,6,36,5,5,0,5,yes
+algorithm_hq,QAOA,8,64,5,5,0,5,yes
+algorithm_hq,QFT,4,16,5,5,0,5,yes
+algorithm_hq,QFT,6,36,5,5,0,5,yes
+algorithm_hq,QFT,8,64,5,0,5,0,no
+algorithm_hq,VQE,4,16,5,5,0,5,yes
+algorithm_hq,VQE,6,36,5,5,0,5,yes
+algorithm_hq,VQE,8,64,5,5,0,5,yes
