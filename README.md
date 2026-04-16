@@ -1,8 +1,5 @@
 # MBQC Classical-Control Study
 
-光 MBQC における古典制御アーキテクチャ評価の研究成果を、`XQsim` 本体から切り離して管理するための独立リポジトリです。
-
-このリポジトリでは、既存の `XQsim` remote は触らず、研究コード・再現用スナップショット・レポートだけを新しい git history で管理します。
 
 ## Directory Layout
 
