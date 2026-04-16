@@ -5,7 +5,7 @@ import pytest
 
 from mbqc_pipeline_sim.adapters.artifact_loader import load_dag_from_json
 from mbqc_pipeline_sim.core.simulator import MbqcPipelineSimulator
-from mbqc_pipeline_sim.domain.enums import ReleaseMode, SchedulingPolicy
+from mbqc_pipeline_sim.domain.enums import DagVariant, ReleaseMode, SchedulingPolicy
 from mbqc_pipeline_sim.domain.models import MeasEdge, MeasNode, PipelineConfig, SimDAG
 
 
@@ -91,6 +91,62 @@ def test_qft_deeper_chain(qft_artifact_path: Path) -> None:
     result = _run(qft_artifact_path, issue_width=4, l_ff=2)
     assert result.ff_chain_depth_raw > 10
     assert result.stall_rate > 0.0 or result.total_cycles > result.total_nodes
+
+
+@pytest.mark.smoke
+def test_shifted_variant_improves_dynamic_throughput(tmp_path: Path) -> None:
+    artifact = {
+        "config": {
+            "algorithm": "TEST",
+            "hardware_size": 1,
+            "logical_qubits": 4,
+            "seed": 0,
+        },
+        "ff_nodes": [
+            {"node_id": 0, "phase": None, "node_type": "M"},
+            {"node_id": 1, "phase": None, "node_type": "M"},
+            {"node_id": 2, "phase": None, "node_type": "M"},
+            {"node_id": 3, "phase": None, "node_type": "M"},
+        ],
+        "ff_edges": [
+            {"src": 0, "dst": 1, "dependency": "x"},
+            {"src": 1, "dst": 2, "dependency": "x"},
+            {"src": 2, "dst": 3, "dependency": "x"},
+        ],
+        "ff_chain_depth_raw": 3,
+        "ff_chain_depth_shifted": 1,
+        "shifted_dependency_graph": {
+            "nodes": [
+                {"node_id": 0, "phase": None, "node_type": "M"},
+                {"node_id": 1, "phase": None, "node_type": "M"},
+                {"node_id": 2, "phase": None, "node_type": "M"},
+                {"node_id": 3, "phase": None, "node_type": "M"},
+            ],
+            "edges": [
+                {"src": 0, "dst": 2, "dependency": "x"},
+                {"src": 1, "dst": 3, "dependency": "x"},
+            ],
+            "chain_depth": 1,
+        },
+    }
+    artifact_path = tmp_path / "variant_compare.json"
+    artifact_path.write_text(__import__("json").dumps(artifact))
+
+    sim = MbqcPipelineSimulator()
+    config = PipelineConfig(
+        issue_width=2,
+        l_meas=1,
+        l_ff=1,
+        meas_width=2,
+        ff_width=2,
+        release_mode=ReleaseMode.NEXT_CYCLE,
+    )
+    raw_result = sim.run(load_dag_from_json(artifact_path, dag_variant=DagVariant.RAW), config)
+    shifted_result = sim.run(load_dag_from_json(artifact_path, dag_variant=DagVariant.SHIFTED), config)
+
+    assert shifted_result.throughput > raw_result.throughput
+    assert shifted_result.stall_rate <= raw_result.stall_rate
+    assert shifted_result.dag_variant is DagVariant.SHIFTED
 
 
 @pytest.mark.smoke

@@ -40,6 +40,9 @@ def assert_artifact_valid(artifact: OnePercArtifact) -> None:
     assert artifact.dgraph_num_nodes > 0
     assert artifact.dgraph_num_edges >= 0
     assert artifact.elapsed_sec > 0
+    if artifact.shifted_dependency_graph is not None:
+        assert artifact.ff_chain_depth_shifted == artifact.shifted_dependency_graph.chain_depth
+        assert len(artifact.shifted_dependency_graph.nodes) > 0
 
     if artifact.status == ArtifactStatus.SUCCESS:
         assert artifact.required_lifetime_layers is not None

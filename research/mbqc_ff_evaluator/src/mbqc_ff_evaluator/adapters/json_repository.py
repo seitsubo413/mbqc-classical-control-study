@@ -8,6 +8,7 @@ from typing import Any, Sequence
 from mbqc_ff_evaluator.domain.enums import Algorithm, ArtifactStatus, DependencyKind, ReferenceKind
 from mbqc_ff_evaluator.domain.models import (
     ArtifactRecord,
+    DependencyGraphSnapshot,
     DepthReference,
     ExperimentConfig,
     FFEdge,
@@ -47,6 +48,7 @@ class JsonArtifactRepository(ArtifactRepository):
     def _deserialize_artifact(self, payload: dict[str, Any]) -> OnePercArtifact:
         config_payload = payload["config"]
         depth_reference_payload = payload.get("depth_reference")
+        shifted_graph_payload = payload.get("shifted_dependency_graph")
         return OnePercArtifact(
             config=ExperimentConfig(
                 algorithm=Algorithm(config_payload["algorithm"]),
@@ -62,22 +64,8 @@ class JsonArtifactRepository(ArtifactRepository):
             max_measure_delay_layers=_optional_int(payload.get("max_measure_delay_layers")),
             dgraph_num_nodes=int(payload["dgraph_num_nodes"]),
             dgraph_num_edges=int(payload["dgraph_num_edges"]),
-            ff_nodes=tuple(
-                FFNode(
-                    node_id=int(node_payload["node_id"]),
-                    phase=_optional_float(node_payload.get("phase")),
-                    node_type=str(node_payload["node_type"]),
-                )
-                for node_payload in payload["ff_nodes"]
-            ),
-            ff_edges=tuple(
-                FFEdge(
-                    src=int(edge_payload["src"]),
-                    dst=int(edge_payload["dst"]),
-                    dependency=DependencyKind(edge_payload["dependency"]),
-                )
-                for edge_payload in payload["ff_edges"]
-            ),
+            ff_nodes=_deserialize_nodes(payload["ff_nodes"]),
+            ff_edges=_deserialize_edges(payload["ff_edges"]),
             ff_chain_depth_raw=int(payload["ff_chain_depth_raw"]),
             ff_chain_depth_shifted=_optional_int(payload.get("ff_chain_depth_shifted")),
             depth_reference=(
@@ -89,6 +77,15 @@ class JsonArtifactRepository(ArtifactRepository):
                 )
             ),
             elapsed_sec=float(payload["elapsed_sec"]),
+            shifted_dependency_graph=(
+                None
+                if shifted_graph_payload is None
+                else DependencyGraphSnapshot(
+                    nodes=_deserialize_nodes(shifted_graph_payload["nodes"]),
+                    edges=_deserialize_edges(shifted_graph_payload["edges"]),
+                    chain_depth=int(shifted_graph_payload["chain_depth"]),
+                )
+            ),
         )
 
 
@@ -102,3 +99,25 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _deserialize_nodes(payload: list[dict[str, Any]]) -> tuple[FFNode, ...]:
+    return tuple(
+        FFNode(
+            node_id=int(node_payload["node_id"]),
+            phase=_optional_float(node_payload.get("phase")),
+            node_type=str(node_payload["node_type"]),
+        )
+        for node_payload in payload
+    )
+
+
+def _deserialize_edges(payload: list[dict[str, Any]]) -> tuple[FFEdge, ...]:
+    return tuple(
+        FFEdge(
+            src=int(edge_payload["src"]),
+            dst=int(edge_payload["dst"]),
+            dependency=DependencyKind(edge_payload["dependency"]),
+        )
+        for edge_payload in payload
+    )

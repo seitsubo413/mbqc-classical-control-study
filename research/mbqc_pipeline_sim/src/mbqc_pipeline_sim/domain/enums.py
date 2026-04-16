@@ -15,6 +15,11 @@ class ReleaseMode(str, Enum):
     NEXT_CYCLE = "next_cycle"
 
 
+class DagVariant(str, Enum):
+    RAW = "raw"
+    SHIFTED = "shifted"
+
+
 class NodeState(str, Enum):
     PENDING = "pending"
     READY = "ready"

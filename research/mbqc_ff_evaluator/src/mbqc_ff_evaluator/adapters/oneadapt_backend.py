@@ -6,16 +6,31 @@ import os
 import sys
 import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import Any, Iterator
 
 from mbqc_ff_evaluator.domain.enums import ArtifactStatus, DependencyKind
 from mbqc_ff_evaluator.domain.errors import DependencyGraphError
-from mbqc_ff_evaluator.domain.models import ExperimentConfig, FFEdge, FFNode, OnePercArtifact
-from mbqc_ff_evaluator.adapters.oneadapt_circuit_factory import OneAdaptCircuitFactory
+from mbqc_ff_evaluator.domain.models import (
+    DependencyGraphSnapshot,
+    ExperimentConfig,
+    FFEdge,
+    FFNode,
+    OnePercArtifact,
+)
+from mbqc_ff_evaluator.adapters.oneadapt_circuit_factory import OneAdaptCircuitFactory, OneAdaptCircuitPayload
 from mbqc_ff_evaluator.ports.compiler_backend import CompilerBackend
 from mbqc_ff_evaluator.services.compute_metrics import compute_ff_chain_depth_raw, compute_ff_chain_depth_shifted
+
+
+@dataclass(frozen=True)
+class DependencyExtraction:
+    dgraph_raw: Any
+    graph_state_with_dependency: Any
+    raw_snapshot: DependencyGraphSnapshot
+    shifted_snapshot: DependencyGraphSnapshot | None
 
 
 class OneAdaptBackend(CompilerBackend):
@@ -57,27 +72,14 @@ class OneAdaptBackend(CompilerBackend):
             empty_value = getattr(map_route_module, "Empty")
 
             graph_state = generate_graph_state(payload.raw_gates, payload.logical_qubits)
-            dgraph_raw, graph_state_with_dependency = determine_dependency(graph_state)
-
-            ff_nodes = self._build_ff_nodes(dgraph_raw)
-            ff_edges = self._build_ff_edges(dgraph_raw)
-            raw_depth = compute_ff_chain_depth_raw(
-                tuple(node.node_id for node in ff_nodes),
-                ff_edges,
+            extraction = self._extract_dependency_graphs(
+                payload=payload,
+                determine_dependency=determine_dependency,
+                signal_shift=signal_shift,
+                generate_graph_state=generate_graph_state,
             )
 
-            shifted_depth: int | None = None
-            try:
-                dgraph_shifted, _ = signal_shift(dgraph_raw.copy(), graph_state_with_dependency.copy())
-                shifted_edges = self._build_ff_edges(dgraph_shifted)
-                shifted_depth = compute_ff_chain_depth_shifted(
-                    tuple(dgraph_shifted.nodes()),
-                    shifted_edges,
-                )
-            except Exception:
-                shifted_depth = None
-
-            undirected_graph_state = networkx_module.Graph(graph_state_with_dependency)
+            undirected_graph_state = networkx_module.Graph(extraction.graph_state_with_dependency)
             reduced_graph_state = reduce_degree(undirected_graph_state)
 
             (
@@ -92,7 +94,7 @@ class OneAdaptBackend(CompilerBackend):
                 max_measure_delay,
             ) = map_route(
                 reduced_graph_state,
-                dgraph_raw.copy(),
+                extraction.dgraph_raw.copy(),
                 config.logical_qubits,
                 config.hardware_size,
                 config.refresh,
@@ -109,15 +111,39 @@ class OneAdaptBackend(CompilerBackend):
             layer_index=layer_index_value,
             required_lifetime_layers=self._coerce_optional_int(required_life_time, empty_value),
             max_measure_delay_layers=self._coerce_optional_int(max_measure_delay, empty_value),
-            dgraph_num_nodes=int(dgraph_raw.number_of_nodes()),
-            dgraph_num_edges=int(dgraph_raw.number_of_edges()),
-            ff_nodes=ff_nodes,
-            ff_edges=ff_edges,
-            ff_chain_depth_raw=raw_depth,
-            ff_chain_depth_shifted=shifted_depth,
+            dgraph_num_nodes=int(extraction.dgraph_raw.number_of_nodes()),
+            dgraph_num_edges=int(extraction.dgraph_raw.number_of_edges()),
+            ff_nodes=extraction.raw_snapshot.nodes,
+            ff_edges=extraction.raw_snapshot.edges,
+            ff_chain_depth_raw=extraction.raw_snapshot.chain_depth,
+            ff_chain_depth_shifted=(
+                None if extraction.shifted_snapshot is None else extraction.shifted_snapshot.chain_depth
+            ),
             depth_reference=None,
             elapsed_sec=elapsed_sec,
+            shifted_dependency_graph=extraction.shifted_snapshot,
         )
+
+    def collect_dependency_snapshots(
+        self,
+        config: ExperimentConfig,
+    ) -> tuple[DependencyGraphSnapshot, DependencyGraphSnapshot | None]:
+        self._ensure_import_path()
+        with self._external_output_context():
+            graph_state_module = importlib.import_module("OnePerc.Graph_State")
+            dependency_module = importlib.import_module("OnePerc.Determine_Dependency")
+
+            payload = self._circuit_factory.build_payload(config)
+            generate_graph_state = getattr(graph_state_module, "generate_graph_state")
+            determine_dependency = getattr(dependency_module, "determine_dependency")
+            signal_shift = getattr(dependency_module, "signal_shift")
+            extraction = self._extract_dependency_graphs(
+                payload=payload,
+                determine_dependency=determine_dependency,
+                signal_shift=signal_shift,
+                generate_graph_state=generate_graph_state,
+            )
+        return extraction.raw_snapshot, extraction.shifted_snapshot
 
     def _ensure_import_path(self) -> None:
         oneadapt_path = str(self._oneadapt_root)
@@ -155,6 +181,53 @@ class OneAdaptBackend(CompilerBackend):
                 raise DependencyGraphError(f"unknown dependency kind: {dependency_raw}")
             edges.append(FFEdge(src=int(src), dst=int(dst), dependency=dependency))
         return tuple(edges)
+
+    def _extract_dependency_graphs(
+        self,
+        *,
+        payload: OneAdaptCircuitPayload,
+        determine_dependency: Any,
+        signal_shift: Any,
+        generate_graph_state: Any,
+    ) -> DependencyExtraction:
+        graph_state = generate_graph_state(payload.raw_gates, payload.logical_qubits)
+        dgraph_raw, graph_state_with_dependency = determine_dependency(graph_state)
+
+        raw_nodes = self._build_ff_nodes(dgraph_raw)
+        raw_edges = self._build_ff_edges(dgraph_raw)
+        raw_depth = compute_ff_chain_depth_raw(
+            tuple(node.node_id for node in raw_nodes),
+            raw_edges,
+        )
+        raw_snapshot = DependencyGraphSnapshot(
+            nodes=raw_nodes,
+            edges=raw_edges,
+            chain_depth=raw_depth,
+        )
+
+        shifted_snapshot: DependencyGraphSnapshot | None = None
+        try:
+            dgraph_shifted, _ = signal_shift(dgraph_raw.copy(), graph_state_with_dependency.copy())
+            shifted_nodes = self._build_ff_nodes(dgraph_shifted)
+            shifted_edges = self._build_ff_edges(dgraph_shifted)
+            shifted_depth = compute_ff_chain_depth_shifted(
+                tuple(node.node_id for node in shifted_nodes),
+                shifted_edges,
+            )
+            shifted_snapshot = DependencyGraphSnapshot(
+                nodes=shifted_nodes,
+                edges=shifted_edges,
+                chain_depth=shifted_depth,
+            )
+        except Exception:
+            shifted_snapshot = None
+
+        return DependencyExtraction(
+            dgraph_raw=dgraph_raw,
+            graph_state_with_dependency=graph_state_with_dependency,
+            raw_snapshot=raw_snapshot,
+            shifted_snapshot=shifted_snapshot,
+        )
 
     def _is_timeout_guard(self, layer_index: float, empty_value: object) -> bool:
         if layer_index == empty_value:

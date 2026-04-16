@@ -35,6 +35,14 @@ def main(argv: list[str] | None = None) -> None:
         / "summary"
         / "sweep_conservative_meas_common.csv",
     )
+    parser.add_argument(
+        "--comparison-input",
+        type=Path,
+        default=Path(__file__).resolve().parents[3]
+        / "results"
+        / "summary"
+        / "shifted_comparison.csv",
+    )
     args = parser.parse_args(argv)
 
     plot_all(
@@ -42,6 +50,7 @@ def main(argv: list[str] | None = None) -> None:
         args.outdir,
         conservative_csv=args.conservative_input,
         conservative_meas_csv=args.conservative_meas_input,
+        comparison_csv=args.comparison_input,
     )
     print(f"Figures saved to {args.outdir}")
 

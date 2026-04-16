@@ -45,6 +45,44 @@ export PYTHONPATH="$PWD/OneAdapt_AE 2:$PWD/research/mbqc_ff_evaluator/src:$PWD/r
 mkdir -p "OneAdapt_AE 2/layers"
 ```
 
+## Shifted DAG Workflow
+
+shifted DAG dynamic study は baseline の `results/raw` や `results/summary` を直接更新せず、study namespace を切って進めます。
+
+最初に study layout を作成し、common coupled subset だけをそこへコピーします。
+
+```bash
+source .venv-ffeval310/bin/activate
+python -m mbqc_ff_evaluator.cli.prepare_shifted_dag_study
+```
+
+既定の study path:
+
+- FF evaluator:
+  - `research/mbqc_ff_evaluator/results/studies/13_shifted_dag_dynamic/common_coupled_subset/`
+- Pipeline simulator:
+  - `research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/`
+
+既存 raw artifact に shifted DAG payload を追加したい場合は、`map_route` を含むフル再収集ではなく backfill を使えます。
+
+```bash
+source .venv-ffeval310/bin/activate
+python -m mbqc_ff_evaluator.cli.backfill_shifted_graph \
+  --raw-dir research/mbqc_ff_evaluator/results/studies/13_shifted_dag_dynamic/common_coupled_subset/artifacts \
+  --algorithms QAOA QFT VQE \
+  --hardware-sizes 4 6 8 \
+  --logical-qubits 16 36 64 \
+  --seeds 0 1 2 3 4
+```
+
+pipeline sim では `--dag-variant raw|shifted|both` を指定できます。
+
+```bash
+python -m mbqc_pipeline_sim.cli.sweep \
+  --artifacts-dir research/mbqc_ff_evaluator/results/studies/13_shifted_dag_dynamic/common_coupled_subset/artifacts \
+  --dag-variant both
+```
+
 ## Git Policy
 
 - `XQsim` 側の `origin` は変更しない

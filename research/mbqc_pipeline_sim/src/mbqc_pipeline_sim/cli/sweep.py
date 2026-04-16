@@ -11,7 +11,7 @@ from pathlib import Path
 from mbqc_pipeline_sim.adapters.artifact_loader import load_all_dags
 from mbqc_pipeline_sim.adapters.csv_writer import write_results
 from mbqc_pipeline_sim.core.simulator import MbqcPipelineSimulator
-from mbqc_pipeline_sim.domain.enums import ReleaseMode, SchedulingPolicy
+from mbqc_pipeline_sim.domain.enums import DagVariant, ReleaseMode, SchedulingPolicy
 from mbqc_pipeline_sim.domain.models import PipelineConfig, SimResult
 
 
@@ -88,6 +88,13 @@ def main(argv: list[str] | None = None) -> None:
         help="Comma-separated FF stage widths (empty=unlimited)",
     )
     parser.add_argument(
+        "--dag-variant",
+        type=str,
+        default=DagVariant.RAW.value,
+        choices=[DagVariant.RAW.value, DagVariant.SHIFTED.value, "both"],
+        help="Select raw, shifted, or both DAG variants from each artifact",
+    )
+    parser.add_argument(
         "--algorithms",
         type=str,
         default="",
@@ -136,8 +143,9 @@ def main(argv: list[str] | None = None) -> None:
 
     meas_widths = _parse_optional_widths(args.meas_widths)
     ff_widths = _parse_optional_widths(args.ff_widths)
+    dag_variants = _parse_dag_variants(args.dag_variant)
 
-    dags = load_all_dags(args.artifacts_dir)
+    dags = load_all_dags(args.artifacts_dir, dag_variants=dag_variants)
     if algo_filter:
         dags = [d for d in dags if d.algorithm in algo_filter]
     if seed_filter:
@@ -197,6 +205,12 @@ def main(argv: list[str] | None = None) -> None:
     write_results(results, args.output)
     elapsed = time.perf_counter() - t0
     print(f"Done: {len(results)} results → {args.output}  ({elapsed:.1f}s)")
+
+
+def _parse_dag_variants(raw: str) -> tuple[DagVariant, ...]:
+    if raw == "both":
+        return (DagVariant.RAW, DagVariant.SHIFTED)
+    return (DagVariant(raw),)
 
 
 if __name__ == "__main__":

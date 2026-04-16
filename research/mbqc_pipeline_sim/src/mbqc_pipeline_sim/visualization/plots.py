@@ -27,6 +27,9 @@ POLICY_STYLES = {
 }
 COMMON_COUPLED_PAIRS = {("4", "16"), ("6", "36"), ("8", "64")}
 MAINLINE_SEEDS = {"0", "1", "2", "3", "4"}
+SHIFTED_POLICIES = {"asap", "greedy_critical"}
+SHIFTED_WIDTHS = {"4", "8"}
+SHIFTED_LATENCIES = {"1", "2"}
 
 
 def _load_csv(path: Path) -> list[dict[str, str]]:
@@ -103,6 +106,34 @@ def _select_next_cycle_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             continue
         selected.append(row)
     return selected
+
+
+def _select_shifted_comparison_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Controlled subset for raw-vs-shifted dynamic comparisons."""
+    selected: list[dict[str, str]] = []
+    for row in rows:
+        if (row["hardware_size"], row["logical_qubits"]) not in COMMON_COUPLED_PAIRS:
+            continue
+        if row.get("release_mode", "") != "next_cycle":
+            continue
+        if row.get("policy", "") not in SHIFTED_POLICIES:
+            continue
+        if row.get("issue_width", "") not in SHIFTED_WIDTHS:
+            continue
+        if row.get("l_meas", "") not in SHIFTED_LATENCIES:
+            continue
+        if row.get("l_ff", "") not in SHIFTED_LATENCIES:
+            continue
+        if row.get("meas_width", "") != row.get("issue_width", ""):
+            continue
+        if row.get("ff_width", "") != row.get("issue_width", ""):
+            continue
+        selected.append(row)
+    return selected
+
+
+def _pair_label(row: dict[str, str]) -> str:
+    return f"H{row['hardware_size']}\nQ{row['logical_qubits']}"
 
 
 def plot_fig1_throughput_vs_width(
@@ -622,12 +653,163 @@ def plot_fig8_stage_width_comparison(
     _save(fig, outdir, "fig8_stage_width_comparison")
 
 
+def plot_fig9_shifted_throughput_comparison(
+    comparison_csv: Path,
+    outdir: Path,
+) -> None:
+    """Figure 9: raw vs shifted throughput on the controlled dynamic-comparison subset."""
+    rows = _select_shifted_comparison_rows(_load_csv(comparison_csv))
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4), sharey=True)
+
+    for ax, algo in zip(axes, ("QAOA", "QFT", "VQE")):
+        algo_rows = [row for row in rows if row["algorithm"] == algo]
+        raw_grouped: dict[str, list[float]] = defaultdict(list)
+        shifted_grouped: dict[str, list[float]] = defaultdict(list)
+        for row in algo_rows:
+            label = _pair_label(row)
+            raw_grouped[label].append(float(row["throughput_raw_median"]))
+            shifted_grouped[label].append(float(row["throughput_shifted_median"]))
+
+        labels = sorted(raw_grouped)
+        x = list(range(len(labels)))
+        raw_vals = [_median(raw_grouped[label]) for label in labels]
+        shifted_vals = [_median(shifted_grouped[label]) for label in labels]
+        width = 0.36
+
+        ax.bar(
+            [pos - width / 2 for pos in x],
+            raw_vals,
+            width=width,
+            color="#9aa4b2",
+            label="raw",
+        )
+        ax.bar(
+            [pos + width / 2 for pos in x],
+            shifted_vals,
+            width=width,
+            color=ALGO_COLORS[algo],
+            label="shifted",
+        )
+        ax.set_title(algo)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.grid(True, alpha=0.3, axis="y")
+
+    axes[0].set_ylabel("Throughput (nodes/cycle)")
+    axes[0].legend(fontsize=8)
+    fig.suptitle(
+        "Raw vs Shifted Throughput — next_cycle, width-matched controller subset"
+    )
+    fig.tight_layout()
+    _save(fig, outdir, "fig9_shifted_throughput_comparison")
+
+
+def plot_fig10_shifted_stall_comparison(
+    comparison_csv: Path,
+    outdir: Path,
+) -> None:
+    """Figure 10: raw vs shifted stall rate on the controlled dynamic-comparison subset."""
+    rows = _select_shifted_comparison_rows(_load_csv(comparison_csv))
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4), sharey=True)
+
+    for ax, algo in zip(axes, ("QAOA", "QFT", "VQE")):
+        algo_rows = [row for row in rows if row["algorithm"] == algo]
+        raw_grouped: dict[str, list[float]] = defaultdict(list)
+        shifted_grouped: dict[str, list[float]] = defaultdict(list)
+        for row in algo_rows:
+            label = _pair_label(row)
+            raw_grouped[label].append(float(row["stall_rate_raw_median"]))
+            shifted_grouped[label].append(float(row["stall_rate_shifted_median"]))
+
+        labels = sorted(raw_grouped)
+        x = list(range(len(labels)))
+        raw_vals = [_median(raw_grouped[label]) for label in labels]
+        shifted_vals = [_median(shifted_grouped[label]) for label in labels]
+        width = 0.36
+
+        ax.bar(
+            [pos - width / 2 for pos in x],
+            raw_vals,
+            width=width,
+            color="#c7cbd1",
+            label="raw",
+        )
+        ax.bar(
+            [pos + width / 2 for pos in x],
+            shifted_vals,
+            width=width,
+            color=ALGO_COLORS[algo],
+            label="shifted",
+        )
+        ax.set_title(algo)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.grid(True, alpha=0.3, axis="y")
+
+    axes[0].set_ylabel("Stall Rate")
+    axes[0].legend(fontsize=8)
+    fig.suptitle(
+        "Raw vs Shifted Stall Rate — next_cycle, width-matched controller subset"
+    )
+    fig.tight_layout()
+    _save(fig, outdir, "fig10_shifted_stall_comparison")
+
+
+def plot_fig11_depth_reduction_vs_throughput_gain(
+    comparison_csv: Path,
+    outdir: Path,
+) -> None:
+    """Figure 11: static depth reduction vs dynamic throughput gain."""
+    rows = _select_shifted_comparison_rows(_load_csv(comparison_csv))
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    pair_markers = {
+        ("4", "16"): "o",
+        ("6", "36"): "s",
+        ("8", "64"): "^",
+    }
+    for algo in ("QAOA", "QFT", "VQE"):
+        algo_rows = [row for row in rows if row["algorithm"] == algo]
+        for pair in COMMON_COUPLED_PAIRS:
+            pair_rows = [
+                row
+                for row in algo_rows
+                if (row["hardware_size"], row["logical_qubits"]) == pair
+            ]
+            if not pair_rows:
+                continue
+            ax.scatter(
+                [float(row["depth_reduction_pct"]) for row in pair_rows],
+                [float(row["throughput_gain_pct"]) for row in pair_rows],
+                color=ALGO_COLORS[algo],
+                marker=pair_markers[pair],
+                s=60,
+                alpha=0.85,
+                label=f"{algo} H{pair[0]}Q{pair[1]}",
+            )
+
+    ax.axhline(0.0, color="#666666", linestyle=":", linewidth=1.2)
+    ax.axvline(0.0, color="#666666", linestyle=":", linewidth=1.2)
+    ax.set_xlabel("Static Depth Reduction (%)")
+    ax.set_ylabel("Throughput Gain (%)")
+    ax.set_title("Static Depth Reduction vs Dynamic Throughput Gain")
+    ax.grid(True, alpha=0.3)
+
+    handles, labels = ax.get_legend_handles_labels()
+    dedup: dict[str, object] = {}
+    for handle, label in zip(handles, labels):
+        dedup.setdefault(label, handle)
+    ax.legend(dedup.values(), dedup.keys(), fontsize=7, ncol=3)
+    _save(fig, outdir, "fig11_depth_reduction_vs_throughput_gain")
+
+
 def plot_all(
     sweep_csv: Path,
     outdir: Path,
     *,
     conservative_csv: Path | None = None,
     conservative_meas_csv: Path | None = None,
+    comparison_csv: Path | None = None,
 ) -> None:
     """Generate all standard figures."""
     plot_fig1_throughput_vs_width(sweep_csv, outdir)
@@ -644,3 +826,7 @@ def plot_all(
         plot_fig7_ff_underprovisioning(conservative_csv, outdir)
         if conservative_meas_csv is not None and conservative_meas_csv.exists():
             plot_fig8_stage_width_comparison(conservative_csv, conservative_meas_csv, outdir)
+    if comparison_csv is not None and comparison_csv.exists():
+        plot_fig9_shifted_throughput_comparison(comparison_csv, outdir)
+        plot_fig10_shifted_stall_comparison(comparison_csv, outdir)
+        plot_fig11_depth_reduction_vs_throughput_gain(comparison_csv, outdir)

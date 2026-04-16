@@ -5,6 +5,7 @@ from pathlib import Path
 from mbqc_ff_evaluator.adapters.json_repository import JsonArtifactRepository
 from mbqc_ff_evaluator.domain.enums import Algorithm, ArtifactStatus, DependencyKind, ReferenceKind
 from mbqc_ff_evaluator.domain.models import (
+    DependencyGraphSnapshot,
     DepthReference,
     ExperimentConfig,
     FFEdge,
@@ -33,9 +34,17 @@ def test_json_repository_roundtrip(tmp_path: Path) -> None:
         ff_nodes=(FFNode(node_id=1, phase=0.5, node_type="Aux"),),
         ff_edges=(FFEdge(src=1, dst=2, dependency=DependencyKind.Z),),
         ff_chain_depth_raw=2,
-        ff_chain_depth_shifted=None,
+        ff_chain_depth_shifted=1,
         depth_reference=DepthReference(kind=ReferenceKind.EXACT_GRAPH, depth=1),
         elapsed_sec=0.25,
+        shifted_dependency_graph=DependencyGraphSnapshot(
+            nodes=(
+                FFNode(node_id=1, phase=0.5, node_type="Aux"),
+                FFNode(node_id=2, phase=None, node_type="M"),
+            ),
+            edges=(),
+            chain_depth=1,
+        ),
     )
 
     repository.save_artifact(artifact)

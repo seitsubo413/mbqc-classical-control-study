@@ -103,4 +103,15 @@ python -m mbqc_ff_evaluator.cli.analyze_measurement_delay
 
 # simple controller model で feasibility を評価
 python -m mbqc_ff_evaluator.cli.evaluate_controller_models --selection-mode coupled_only --tau-ph-us 1.0
+
+# shifted DAG dynamic study 用 layout を作成
+python -m mbqc_ff_evaluator.cli.prepare_shifted_dag_study
+
+# 既存 raw artifact に shifted DAG payload を追記
+python -m mbqc_ff_evaluator.cli.backfill_shifted_graph \
+  --raw-dir research/mbqc_ff_evaluator/results/studies/13_shifted_dag_dynamic/common_coupled_subset/artifacts \
+  --algorithms QAOA QFT VQE \
+  --hardware-sizes 4 6 8 \
+  --logical-qubits 16 36 64 \
+  --seeds 0 1 2 3 4
 ```

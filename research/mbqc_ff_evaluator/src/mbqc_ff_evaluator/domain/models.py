@@ -35,6 +35,13 @@ class FFEdge:
 
 
 @dataclass(frozen=True)
+class DependencyGraphSnapshot:
+    nodes: tuple[FFNode, ...]
+    edges: tuple[FFEdge, ...]
+    chain_depth: int
+
+
+@dataclass(frozen=True)
 class DepthReference:
     kind: ReferenceKind
     depth: int
@@ -55,6 +62,7 @@ class OnePercArtifact:
     ff_chain_depth_shifted: int | None
     depth_reference: DepthReference | None
     elapsed_sec: float
+    shifted_dependency_graph: DependencyGraphSnapshot | None = None
 
 
 @dataclass(frozen=True)

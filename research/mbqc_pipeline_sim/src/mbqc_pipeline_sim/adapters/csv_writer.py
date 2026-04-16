@@ -9,10 +9,12 @@ from mbqc_pipeline_sim.domain.models import SimResult
 
 _FIELDNAMES = [
     "dag_label",
+    "dag_variant",
     "algorithm",
     "hardware_size",
     "logical_qubits",
     "dag_seed",
+    "ff_chain_depth",
     "ff_chain_depth_raw",
     "ff_chain_depth_shifted",
     "policy",
@@ -40,10 +42,12 @@ def write_results(results: list[SimResult], path: Path) -> None:
             writer.writerow(
                 {
                     "dag_label": r.dag_label,
+                    "dag_variant": r.dag_variant.value,
                     "algorithm": r.algorithm,
                     "hardware_size": r.hardware_size,
                     "logical_qubits": r.logical_qubits,
                     "dag_seed": r.dag_seed,
+                    "ff_chain_depth": r.ff_chain_depth,
                     "ff_chain_depth_raw": r.ff_chain_depth_raw,
                     "ff_chain_depth_shifted": r.ff_chain_depth_shifted
                     if r.ff_chain_depth_shifted is not None

@@ -128,7 +128,10 @@ class MbqcPipelineSimulator:
         max_possible = config.issue_width * total_cycles
         utilization = total_issued / max_possible if max_possible > 0 else 0.0
 
-        label = f"{dag.algorithm}_H{dag.hardware_size}_Q{dag.logical_qubits}_s{dag.dag_seed}"
+        label = (
+            f"{dag.algorithm}_H{dag.hardware_size}_Q{dag.logical_qubits}"
+            f"_s{dag.dag_seed}_{dag.dag_variant.value}"
+        )
 
         return SimResult(
             dag_label=label,
@@ -139,6 +142,8 @@ class MbqcPipelineSimulator:
             stall_cycles=stall_cycles,
             stall_rate=stall_cycles / total_cycles if total_cycles > 0 else 0.0,
             utilization=utilization,
+            dag_variant=dag.dag_variant,
+            ff_chain_depth=dag.ff_chain_depth,
             ff_chain_depth_raw=dag.ff_chain_depth_raw,
             ff_chain_depth_shifted=dag.ff_chain_depth_shifted,
             algorithm=dag.algorithm,

@@ -5,28 +5,31 @@ import json
 import warnings
 from collections import defaultdict, deque
 from pathlib import Path
+from typing import Any
 
+from mbqc_pipeline_sim.domain.enums import DagVariant
 from mbqc_pipeline_sim.domain.errors import InvalidArtifactError
 from mbqc_pipeline_sim.domain.models import MeasEdge, MeasNode, SimDAG
 
 
-def load_dag_from_json(path: Path) -> SimDAG:
+def load_dag_from_json(path: Path, dag_variant: DagVariant = DagVariant.RAW) -> SimDAG:
     """Read a single FF-evaluator artifact JSON and build a SimDAG."""
     with open(path) as f:
         raw = json.load(f)
 
     config = raw["config"]
+    nodes_payload, edges_payload, selected_depth = _variant_payload(raw, dag_variant)
     nodes = tuple(
         MeasNode(
             node_id=int(n["node_id"]),
             phase=n.get("phase"),
             node_type=n.get("node_type", "Unknown"),
         )
-        for n in raw["ff_nodes"]
+        for n in nodes_payload
     )
     edges = tuple(
         MeasEdge(src=int(e["src"]), dst=int(e["dst"]), dependency=e["dependency"])
-        for e in raw["ff_edges"]
+        for e in edges_payload
     )
 
     dag = SimDAG(
@@ -38,23 +41,61 @@ def load_dag_from_json(path: Path) -> SimDAG:
         hardware_size=config["hardware_size"],
         logical_qubits=config["logical_qubits"],
         dag_seed=config["seed"],
-        ff_chain_depth_raw=raw.get("ff_chain_depth_raw", 0),
-        ff_chain_depth_shifted=raw.get("ff_chain_depth_shifted"),
+        dag_variant=dag_variant,
+        ff_chain_depth_raw=int(raw.get("ff_chain_depth_raw", 0)),
+        ff_chain_depth_shifted=_optional_int(raw.get("ff_chain_depth_shifted")),
     )
     _preprocess(dag)
+    dag.ff_chain_depth = (
+        selected_depth if selected_depth is not None else max(dag.topo_level.values(), default=0)
+    )
     return dag
 
 
-def load_all_dags(directory: Path) -> list[SimDAG]:
+def load_all_dags(
+    directory: Path,
+    *,
+    dag_variants: tuple[DagVariant, ...] = (DagVariant.RAW,),
+) -> list[SimDAG]:
     """Load every *.json artifact in *directory*."""
     dags: list[SimDAG] = []
     for p in sorted(directory.glob("*.json")):
-        try:
-            dags.append(load_dag_from_json(p))
-        except (KeyError, json.JSONDecodeError) as exc:
-            warnings.warn(f"Skipping {p.name}: {exc}", stacklevel=2)
-            continue
+        for dag_variant in dag_variants:
+            try:
+                dags.append(load_dag_from_json(p, dag_variant=dag_variant))
+            except (KeyError, json.JSONDecodeError, InvalidArtifactError) as exc:
+                warnings.warn(
+                    f"Skipping {p.name} ({dag_variant.value}): {exc}",
+                    stacklevel=2,
+                )
+                continue
     return dags
+
+
+def _variant_payload(
+    raw: dict[str, Any],
+    dag_variant: DagVariant,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int | None]:
+    if dag_variant is DagVariant.RAW:
+        return (
+            raw["ff_nodes"],
+            raw["ff_edges"],
+            _optional_int(raw.get("ff_chain_depth_raw")),
+        )
+
+    shifted_graph = raw.get("shifted_dependency_graph")
+    if not isinstance(shifted_graph, dict):
+        raise InvalidArtifactError("Shifted dependency graph is not available in this artifact")
+
+    nodes_payload = shifted_graph.get("nodes", raw["ff_nodes"])
+    edges_payload = shifted_graph.get("edges")
+    if not isinstance(nodes_payload, list) or not isinstance(edges_payload, list):
+        raise InvalidArtifactError("Shifted dependency graph payload is malformed")
+
+    selected_depth = _optional_int(shifted_graph.get("chain_depth"))
+    if selected_depth is None:
+        selected_depth = _optional_int(raw.get("ff_chain_depth_shifted"))
+    return nodes_payload, edges_payload, selected_depth
 
 
 def _preprocess(dag: SimDAG) -> None:
@@ -110,3 +151,9 @@ def _preprocess(dag: SimDAG) -> None:
             if tmp_outdeg[pred] == 0:
                 queue.append(pred)
     dag.remaining_depth = rem
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)

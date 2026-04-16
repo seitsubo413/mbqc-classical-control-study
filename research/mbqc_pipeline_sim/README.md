@@ -36,3 +36,22 @@ python -m mbqc_pipeline_sim.cli.sweep \
 python -m mbqc_pipeline_sim.cli.aggregate
 python -m mbqc_pipeline_sim.cli.plot
 ```
+
+raw / shifted の両方を同時に比較したい場合:
+
+```bash
+python -m mbqc_pipeline_sim.cli.sweep \
+  --artifacts-dir research/mbqc_ff_evaluator/results/studies/13_shifted_dag_dynamic/common_coupled_subset/artifacts \
+  --output research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/summary/sweep.csv \
+  --dag-variant both
+
+python -m mbqc_pipeline_sim.cli.aggregate \
+  --input research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/summary/sweep.csv \
+  --output research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/summary/aggregated.csv \
+  --comparison-output research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/summary/comparison.csv
+
+python -m mbqc_pipeline_sim.cli.plot \
+  --input research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/summary/sweep.csv \
+  --comparison-input research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/summary/comparison.csv \
+  --outdir research/mbqc_pipeline_sim/results/studies/13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/figures
+```

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final
 
-from .enums import ReleaseMode, SchedulingPolicy
+from .enums import DagVariant, ReleaseMode, SchedulingPolicy
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,8 @@ class SimDAG:
     hardware_size: int = 0
     logical_qubits: int = 0
     dag_seed: int = 0
+    dag_variant: DagVariant = DagVariant.RAW
+    ff_chain_depth: int = 0
     ff_chain_depth_raw: int = 0
     ff_chain_depth_shifted: int | None = None
 
@@ -90,6 +92,8 @@ class SimResult:
     stall_cycles: int
     stall_rate: float
     utilization: float
+    dag_variant: DagVariant
+    ff_chain_depth: int
     ff_chain_depth_raw: int
     ff_chain_depth_shifted: int | None
     algorithm: str
