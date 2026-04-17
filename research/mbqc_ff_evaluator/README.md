@@ -5,6 +5,7 @@
 
 ## 方針
 
+- リポジトリ全体の変更ポリシー: [`docs/project_change_policy.md`](../../docs/project_change_policy.md)
 - この repo の中で進める
 - `OneAdapt_AE 2/` には原則として研究ロジックを直接混ぜない
 - Python 環境はこの研究専用に分離する

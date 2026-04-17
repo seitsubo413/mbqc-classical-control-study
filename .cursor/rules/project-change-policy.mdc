@@ -1,0 +1,14 @@
+---
+description: シミュレーション結果の再利用を優先する変更ポリシー（拡張は歓迎、コア契約は凍結に近く）
+alwaysApply: true
+---
+
+# プロジェクト変更ポリシー
+
+詳細は `docs/project_change_policy.md` を必ず読むこと。
+
+要約:
+
+- **新 policy・新 study・新 `results/studies/<id>/`・ドキュメント追記**は問題なし。
+- **既存の sweep 列・aggregate キー・artifact スキーマ・スケジューラの挙動**は、オーナー明示の指示がない限り変更しない（バグ修正時は差分を記録し、可能なら新 study で再採取）。
+- 既存 canonical CSV を上書きして意味が変わる変更はしない。再実験は別ディレクトリまたは新 study_id。
