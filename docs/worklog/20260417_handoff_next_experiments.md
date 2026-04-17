@@ -241,9 +241,14 @@ PYTHONPATH=src .venv-ffeval310/bin/python3 -m mbqc_pipeline_sim.cli.sweep \
 ```
 mbqc-classical-control-study/
 ├── docs/
+│   ├── 18_codebase_architecture_guide.md
 │   ├── 20_hypothesis_driven_study_report.md   ← 本日の成果レポート（必読）
+│   ├── 今後の指針.md
+│   ├── docs_old/                              ← doc 10–17 相当のアーカイブ
 │   └── worklog/
-│       └── 20260417_handoff_next_experiments.md  ← 本ファイル
+│       ├── 20260417_handoff_next_experiments.md  ← 本ファイル
+│       ├── 13_shifted_dag_handoff.md
+│       └── 19_handoff_rerun_all_studies.md
 │
 └── research/mbqc_pipeline_sim/
     ├── src/mbqc_pipeline_sim/
