@@ -17,6 +17,19 @@
 ## 成果物
 
 - `summary/sweep.csv` — 720 行 + ヘッダ（40 DAGs × 18 configs）。`partial_W*.csv` は再現用の分割出力。
+- `summary/paired_comparison.csv` — 上記を DAG×設定ごとに ASAP と ff_rate_matched を突き合わせた 360 行（`compute_paired_comparison.py` で生成）。
+- `summary/study17_summary.txt` — ペア比較の集計サマリ（同スクリプトが上書き生成）。
+- `compute_paired_comparison.py` — `paired_comparison.csv` と `study17_summary.txt` の再計算用。
+
+## 結果（一次集計・本 sweep 時点）
+
+- **360 ペア**について `total_cycles_ff / total_cycles_asap` の中央値は **1.0**（`throughput` も中央値で差なし）。
+- **346 / 360** はサイクル数が **完全一致**。差が出たのは **14 ペアのみ**で、比率は **±0.17% 未満**の微差に留まる（主に QFT）。
+- **F/W × issue_width** の各バケット（各 40 ペア）でも、サイクル比の中央値はすべて **1.0**。
+
+→ 本パラメータ域（shifted・next_cycle・l_ff=2・ff_width∈{2,3,4}）では、**スロットリングによる「総実行サイクルの明確な増加」は観測されず**、仮説の「F/W が小さいほどコストが出る」も、この集計粒度では裏付けられなかった。
+
+（待ち行列や issue 利用率などの **メトリクス拡張**で差が見えるかは別途。）
 
 ## 注意
 
@@ -42,4 +55,12 @@ for W in 4 8 16; do
 done
 head -1 "$OUTDIR/partial_W4.csv" > "$OUTDIR/sweep.csv"
 for W in 4 8 16; do tail -n +2 "$OUTDIR/partial_W${W}.csv" >> "$OUTDIR/sweep.csv"; done
+```
+
+## ペア集計の再現
+
+リポジトリルートから:
+
+```bash
+python3 research/mbqc_pipeline_sim/results/studies/17_throughput_cost/compute_paired_comparison.py
 ```

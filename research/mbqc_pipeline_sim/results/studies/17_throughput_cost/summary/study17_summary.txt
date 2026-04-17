@@ -1,0 +1,20 @@
+Study 17: ASAP vs ff_rate_matched (shifted DAG)
+Paired rows: 360
+
+Global:
+  median(cycles_ratio_ff_over_asap) = 1.000000  (1.0 = same total_cycles)
+  median(throughput_gain_pct) = 0.0000%
+  cycles_ratio == 1.0: 346
+  cycles_ratio >  1.0: 10  (ff_rate_matched slower)
+  cycles_ratio <  1.0: 4  (ff_rate_matched faster)
+
+By F/W and issue_width (median cycles_ratio):
+  F/W=0.1250  issue_width=16  n= 40  median_cycles_ratio=1.000000
+  F/W=0.1875  issue_width=16  n= 40  median_cycles_ratio=1.000000
+  F/W=0.2500  issue_width= 8  n= 40  median_cycles_ratio=1.000000
+  F/W=0.2500  issue_width=16  n= 40  median_cycles_ratio=1.000000
+  F/W=0.3750  issue_width= 8  n= 40  median_cycles_ratio=1.000000
+  F/W=0.5000  issue_width= 4  n= 40  median_cycles_ratio=1.000000
+  F/W=0.5000  issue_width= 8  n= 40  median_cycles_ratio=1.000000
+  F/W=0.7500  issue_width= 4  n= 40  median_cycles_ratio=1.000000
+  F/W=1.0000  issue_width= 4  n= 40  median_cycles_ratio=1.000000

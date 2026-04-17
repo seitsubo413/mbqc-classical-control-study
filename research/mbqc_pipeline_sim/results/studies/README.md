@@ -11,3 +11,7 @@ shifted DAG dynamic study の既定 namespace:
 throughput コスト（ASAP vs ff_rate_matched、shifted のみ）:
 
 - `17_throughput_cost/summary/sweep.csv`
+
+L_ff 感度分析（ASAP vs ff_rate_matched、raw + shifted、QAOA/VQE H8/Q64）:
+
+- `18_lff_sensitivity/summary/sweep.csv`
