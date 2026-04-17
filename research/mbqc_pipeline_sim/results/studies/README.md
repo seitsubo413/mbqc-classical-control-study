@@ -15,3 +15,7 @@ throughput コスト（ASAP vs ff_rate_matched、shifted のみ）:
 L_ff 感度分析（ASAP vs ff_rate_matched、raw + shifted、QAOA/VQE H8/Q64）:
 
 - `18_lff_sensitivity/summary/sweep.csv`
+
+L_meas 感度分析（ASAP vs ff_rate_matched、raw + shifted、QAOA/VQE H6/H8）:
+
+- `19_lmeas_sensitivity/summary/sweep_all.csv`
