@@ -983,3 +983,197 @@ def _predicted_gain_band(gain_positive_rate: float, gain_ge_5_rate: float, gain_
     if gain_positive_rate >= 0.8:
         return "weak"
     return "unlikely"
+
+
+# ---------------------------------------------------------------------------
+# D_ff correlation analysis (Option 3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DffPolicyCase:
+    """Per-seed, per-scenario policy vs ASAP comparison with D_ff."""
+
+    dag_variant: str
+    algorithm: str
+    hardware_size: int
+    logical_qubits: int
+    dag_seed: int
+    policy: str
+    l_meas: int
+    l_ff: int
+    meas_width: int | None
+    ff_width: int | None
+    ff_chain_depth: int
+    ff_chain_depth_raw: int
+    ff_chain_depth_shifted: int | None
+    throughput_asap: float
+    throughput_policy: float
+    throughput_vs_asap_pct: float
+    stall_asap: float
+    stall_policy: float
+    stall_vs_asap_pct: float  # positive = stall increased (worse), negative = improved
+
+
+@dataclass(frozen=True)
+class DffCorrelationBin:
+    """Median policy vs ASAP metrics, grouped by D_ff bin."""
+
+    dag_variant: str
+    policy: str
+    ff_chain_depth_bin: str
+    ff_chain_depth_bin_min: int
+    ff_chain_depth_bin_max: int
+    case_count: int
+    throughput_vs_asap_pct_median: float
+    stall_vs_asap_pct_median: float
+    throughput_positive_rate: float
+    stall_positive_rate: float  # fraction where stall improved vs asap
+
+
+def build_dff_policy_cases(
+    observations: Iterable[SweepObservation],
+) -> tuple[DffPolicyCase, ...]:
+    """For each scenario, compare every policy vs ASAP on the same dag_variant."""
+    # Group by (dag_variant, alg, H, Q, seed, l_meas, l_ff, meas_width, ff_width)
+    ScenarioKey = tuple[str, str, int, int, int, int, int, int | None, int | None]
+    grouped: dict[ScenarioKey, dict[str, SweepObservation]] = defaultdict(dict)
+    for obs in observations:
+        key: ScenarioKey = (
+            obs.dag_variant,
+            obs.algorithm,
+            obs.hardware_size,
+            obs.logical_qubits,
+            obs.dag_seed,
+            obs.l_meas,
+            obs.l_ff,
+            obs.meas_width,
+            obs.ff_width,
+        )
+        grouped[key][obs.policy] = obs
+
+    cases: list[DffPolicyCase] = []
+    for key in sorted(grouped):
+        scenario = grouped[key]
+        asap = scenario.get("asap")
+        if asap is None:
+            continue
+        dag_variant, algorithm, hardware_size, logical_qubits, dag_seed, l_meas, l_ff, meas_width, ff_width = key
+        for policy, obs in sorted(scenario.items()):
+            cases.append(
+                DffPolicyCase(
+                    dag_variant=dag_variant,
+                    algorithm=algorithm,
+                    hardware_size=hardware_size,
+                    logical_qubits=logical_qubits,
+                    dag_seed=dag_seed,
+                    policy=policy,
+                    l_meas=l_meas,
+                    l_ff=l_ff,
+                    meas_width=meas_width,
+                    ff_width=ff_width,
+                    ff_chain_depth=obs.ff_chain_depth,
+                    ff_chain_depth_raw=obs.ff_chain_depth_raw,
+                    ff_chain_depth_shifted=obs.ff_chain_depth_shifted,
+                    throughput_asap=asap.throughput,
+                    throughput_policy=obs.throughput,
+                    throughput_vs_asap_pct=_pct_change(asap.throughput, obs.throughput),
+                    stall_asap=asap.stall_rate,
+                    stall_policy=obs.stall_rate,
+                    stall_vs_asap_pct=_pct_change(asap.stall_rate, obs.stall_rate),
+                )
+            )
+    return tuple(cases)
+
+
+def build_dff_correlation_bins(
+    cases: Iterable[DffPolicyCase],
+    bins: tuple[tuple[int, int], ...] = ((1, 2), (3, 5), (6, 15), (16, 40), (41, 100), (101, 400)),
+) -> tuple[DffCorrelationBin, ...]:
+    """Aggregate DffPolicyCase into D_ff bins for summary."""
+    def _bin_label(lo: int, hi: int) -> str:
+        return f"{lo}-{hi}"
+
+    grouped: dict[tuple[str, str, str], list[DffPolicyCase]] = defaultdict(list)
+    bin_bounds: dict[str, tuple[int, int]] = {}
+    for case in cases:
+        for lo, hi in bins:
+            if lo <= case.ff_chain_depth <= hi:
+                label = _bin_label(lo, hi)
+                bin_bounds[label] = (lo, hi)
+                grouped[(case.dag_variant, case.policy, label)].append(case)
+                break
+
+    rows: list[DffCorrelationBin] = []
+    for key in sorted(grouped):
+        dag_variant, policy, label = key
+        group = grouped[key]
+        lo, hi = bin_bounds[label]
+        rows.append(
+            DffCorrelationBin(
+                dag_variant=dag_variant,
+                policy=policy,
+                ff_chain_depth_bin=label,
+                ff_chain_depth_bin_min=lo,
+                ff_chain_depth_bin_max=hi,
+                case_count=len(group),
+                throughput_vs_asap_pct_median=_round(_median(c.throughput_vs_asap_pct for c in group)),
+                stall_vs_asap_pct_median=_round(_median(c.stall_vs_asap_pct for c in group)),
+                throughput_positive_rate=_round(
+                    sum(1 for c in group if c.throughput_vs_asap_pct > 0.0) / len(group)
+                ),
+                stall_positive_rate=_round(
+                    sum(1 for c in group if c.stall_vs_asap_pct < 0.0) / len(group)
+                ),
+            )
+        )
+    return tuple(rows)
+
+
+def _dff_case_to_row(case: DffPolicyCase) -> dict[str, object]:
+    return {
+        "dag_variant": case.dag_variant,
+        "algorithm": case.algorithm,
+        "hardware_size": case.hardware_size,
+        "logical_qubits": case.logical_qubits,
+        "dag_seed": case.dag_seed,
+        "policy": case.policy,
+        "l_meas": case.l_meas,
+        "l_ff": case.l_ff,
+        "meas_width": case.meas_width if case.meas_width is not None else "",
+        "ff_width": case.ff_width if case.ff_width is not None else "",
+        "ff_chain_depth": case.ff_chain_depth,
+        "ff_chain_depth_raw": case.ff_chain_depth_raw,
+        "ff_chain_depth_shifted": case.ff_chain_depth_shifted if case.ff_chain_depth_shifted is not None else "",
+        "throughput_asap": case.throughput_asap,
+        "throughput_policy": case.throughput_policy,
+        "throughput_vs_asap_pct": case.throughput_vs_asap_pct,
+        "stall_asap": case.stall_asap,
+        "stall_policy": case.stall_policy,
+        "stall_vs_asap_pct": case.stall_vs_asap_pct,
+    }
+
+
+def _dff_bin_to_row(bin_: DffCorrelationBin) -> dict[str, object]:
+    return {
+        "dag_variant": bin_.dag_variant,
+        "policy": bin_.policy,
+        "ff_chain_depth_bin": bin_.ff_chain_depth_bin,
+        "ff_chain_depth_bin_min": bin_.ff_chain_depth_bin_min,
+        "ff_chain_depth_bin_max": bin_.ff_chain_depth_bin_max,
+        "case_count": bin_.case_count,
+        "throughput_vs_asap_pct_median": bin_.throughput_vs_asap_pct_median,
+        "stall_vs_asap_pct_median": bin_.stall_vs_asap_pct_median,
+        "throughput_positive_rate": bin_.throughput_positive_rate,
+        "stall_positive_rate": bin_.stall_positive_rate,
+    }
+
+
+def write_dff_correlation_outputs(
+    cases: tuple[DffPolicyCase, ...],
+    bins: tuple[DffCorrelationBin, ...],
+    output_dir: Path,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    _write_csv(output_dir / "dff_policy_cases.csv", tuple(_dff_case_to_row(c) for c in cases))
+    _write_csv(output_dir / "dff_correlation_bins.csv", tuple(_dff_bin_to_row(b) for b in bins))

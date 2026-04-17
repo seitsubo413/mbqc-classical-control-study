@@ -1,0 +1,10 @@
+algorithm,issue_width,policy,case_count,inactive_case_count,inactive_case_rate,max_width_profile_count
+QAOA,8,asap,15,0,0.0,5
+QAOA,8,ff_rate_matched,15,0,0.0,5
+QAOA,8,stall_aware_shifted_refined,15,0,0.0,5
+QFT,8,asap,10,0,0.0,5
+QFT,8,ff_rate_matched,10,0,0.0,5
+QFT,8,stall_aware_shifted_refined,10,0,0.0,5
+VQE,8,asap,15,0,0.0,5
+VQE,8,ff_rate_matched,15,0,0.0,5
+VQE,8,stall_aware_shifted_refined,15,0,0.0,5

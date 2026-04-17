@@ -1,0 +1,10 @@
+algorithm,policy,latency_profile,pair_count,unique_seed_count,depth_reduction_pct_median,throughput_gain_pct_median,throughput_gain_pct_q1,throughput_gain_pct_q3,stall_reduction_pct_median,utilization_gain_pct_median,raw_throughput_median,raw_stall_rate_median,throughput_positive_count,throughput_zero_count,throughput_negative_count,throughput_sign_test_pvalue
+QAOA,asap,mixed,75,5,97.368421,31.007768,12.019212,94.117657,49.183211,31.007833,4.157609,0.114007,75,0,0,0.0
+QAOA,ff_rate_matched,mixed,75,5,97.368421,31.617654,12.019212,97.058868,92.277228,31.617771,4.135135,0.114007,75,0,0,0.0
+QAOA,stall_aware_shifted_refined,mixed,75,5,97.368421,16.816825,2.402407,92.537349,87.56964,16.816671,4.434066,0.063037,70,5,0,0.0
+QFT,asap,mixed,50,5,90.652286,19.828311,9.981349,51.162812,-56.661707,19.82824,3.892584,0.106918,50,0,0,0.0
+QFT,ff_rate_matched,mixed,50,5,90.652286,19.828311,9.981349,51.869159,91.369119,19.82824,3.892584,0.106918,50,0,0,0.0
+QFT,stall_aware_shifted_refined,mixed,50,5,90.652286,17.56611,8.075117,54.066988,94.579585,17.566089,3.917339,0.083288,50,0,0,0.0
+VQE,asap,mixed,75,5,97.142857,10.045665,4.244485,32.727272,-230.347492,10.045686,4.628571,0.049793,75,0,0,0.0
+VQE,ff_rate_matched,mixed,75,5,97.142857,10.045665,4.244485,30.909062,78.181644,10.045686,4.628571,0.049793,75,0,0,0.0
+VQE,stall_aware_shifted_refined,mixed,75,5,97.142857,13.308,4.00972,30.909062,83.81297,13.308095,4.348993,0.07047,65,10,0,0.0

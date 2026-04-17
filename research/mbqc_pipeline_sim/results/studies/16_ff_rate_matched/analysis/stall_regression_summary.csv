@@ -1,0 +1,16 @@
+algorithm,policy,latency_profile,width_profile,case_count,throughput_improved_count,throughput_equal_count,throughput_worse_count,stall_reduction_pct_median,throughput_gain_pct_median
+QAOA,asap,mixed,W8_M8_F4,11,11,0,0,-448.000805,5.472628
+QAOA,asap,mixed,W8_M8_F5,9,9,0,0,-229.715475,8.216424
+QAOA,asap,mixed,W8_M8_F6,5,5,0,0,-93.066373,10.804307
+QAOA,asap,mixed,W8_M8_F7,1,1,0,0,-10.543366,13.055963
+QAOA,stall_aware_shifted_refined,mixed,W8_M8_F4,4,4,0,0,-0.814684,0.818035
+QAOA,stall_aware_shifted_refined,mixed,W8_M8_F5,2,2,0,0,-0.708701,0.71466
+QAOA,stall_aware_shifted_refined,mixed,W8_M8_F8,2,2,0,0,-4.883489,4.873897
+QFT,asap,mixed,W8_M8_F4,10,10,0,0,-611.65405,12.981151
+QFT,asap,mixed,W8_M8_F5,10,10,0,0,-245.131841,20.723337
+QFT,asap,mixed,W8_M8_F6,5,5,0,0,-201.151349,9.981349
+QFT,asap,mixed,W8_M8_F7,5,5,0,0,-31.4884,13.557483
+VQE,asap,mixed,W8_M8_F4,15,15,0,0,-1554.983041,4.892963
+VQE,asap,mixed,W8_M8_F5,15,15,0,0,-627.505425,6.463896
+VQE,asap,mixed,W8_M8_F6,15,15,0,0,-285.156548,10.045665
+VQE,asap,mixed,W8_M8_F7,10,10,0,0,-145.55445,8.735998

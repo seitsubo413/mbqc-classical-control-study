@@ -1,0 +1,9 @@
+algorithm,hardware_size,logical_qubits,D_ff_shifted_median,total_nodes,burst_load,f_star_asap_median,f_star_ffrm_median,f_star_reduction,f_theory_log
+QAOA,4,16,2.0,354,177.0,4,4,0,7
+QAOA,6,36,2.0,1614,807.0,6,4,2,8
+QAOA,8,64,2.0,4980,2490.0,7,4,3,8
+QFT,4,16,7.0,1232,176.0,6,4,2,7
+QFT,6,36,17.0,6372,374.8235294117647,8,4,4,8
+VQE,4,16,1.0,256,256.0,7,4,3,8
+VQE,6,36,1.0,1296,1296.0,8,4,4,8
+VQE,8,64,1.0,4096,4096.0,8,4,4,8

@@ -12,6 +12,7 @@ class SchedulingPolicy(str, Enum):
     STALL_AWARE_SHIFTED_REFINED = "stall_aware_shifted_refined"
     REGIME_SWITCH = "regime_switch"
     REGIME_SWITCH_REFINED = "regime_switch_refined"
+    FF_RATE_MATCHED = "ff_rate_matched"
     RANDOM = "random"
 
 

@@ -259,6 +259,37 @@ class RefinedRegimeSwitchScheduler(SchedulerBase):
         return SchedulerRegime.SHIFTED_CRITICAL
 
 
+class FfRateMatchedScheduler(SchedulerBase):
+    """Issue at most ff_width nodes/cycle whenever FF is at capacity.
+
+    Root cause of burst: issue_rate (W) > FF processing rate (ff_width).
+    This scheduler caps the issue rate to ff_width the moment FF is saturated,
+    preventing the waiting queue from growing in the first place.
+
+    Ordering: ASAP (topo_level, node_id) — same natural spread as ASAPScheduler.
+    Throttle trigger: ff_in_flight >= ff_width OR ff_waiting > 0.
+    """
+
+    def select(
+        self,
+        ready: Sequence[int],
+        limit: int,
+        context: SchedulerContext | None = None,
+    ) -> list[int]:
+        if not ready:
+            return []
+        ff_width = self._config.ff_width
+        if ff_width is not None and context is not None:
+            ff_saturated = (
+                context.ff_in_flight_count >= ff_width
+                or context.ff_waiting_count > 0
+            )
+            if ff_saturated:
+                limit = min(limit, ff_width)
+        ordered = sorted(ready, key=lambda n: (self._dag.topo_level.get(n, 0), n))
+        return ordered[:limit]
+
+
 class RandomScheduler(SchedulerBase):
     """Uniformly random selection from ready set (baseline)."""
 
@@ -300,6 +331,8 @@ def build_scheduler(
         return RegimeSwitchScheduler(dag, config)
     if policy == SchedulingPolicy.REGIME_SWITCH_REFINED:
         return RefinedRegimeSwitchScheduler(dag, config)
+    if policy == SchedulingPolicy.FF_RATE_MATCHED:
+        return FfRateMatchedScheduler(dag, config)
     if policy == SchedulingPolicy.RANDOM:
         return RandomScheduler(dag, config, seed=seed)
     raise ValueError(f"Unknown policy: {policy}")
