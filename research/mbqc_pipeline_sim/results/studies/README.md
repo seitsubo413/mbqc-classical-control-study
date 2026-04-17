@@ -7,3 +7,7 @@
 shifted DAG dynamic study の既定 namespace:
 
 - `13_shifted_dag_dynamic/raw_vs_shifted_next_cycle_width_matched/`
+
+throughput コスト（ASAP vs ff_rate_matched、shifted のみ）:
+
+- `17_throughput_cost/summary/sweep.csv`
