@@ -227,7 +227,7 @@ rule-based に以下を切り替える policy を追加した。
 - regime-switch comparison:
   - `research/mbqc_pipeline_sim/results/studies/14_shifted_dag_codesign/regime_switch_w8_focus/`
 - plan document:
-  - `docs/14_shifted_dag_controller_codesign_plan.md`
+  - `docs/docs_old/14_shifted_dag_controller_codesign_plan.md`
 
 ## Bottom Line
 

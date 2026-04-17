@@ -2,7 +2,7 @@
 
 ## Positioning
 
-本計画は、`docs/13_shifted_dag_dynamic_report.md` で得た結果を次の研究段階へ進めるための方針書である。
+本計画は、`docs/docs_old/13_shifted_dag_dynamic_report.md` で得た結果を次の研究段階へ進めるための方針書である。
 
 現時点で確認できていること:
 

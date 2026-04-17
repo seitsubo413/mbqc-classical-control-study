@@ -2,7 +2,7 @@
 
 ## Positioning
 
-本書は、`docs/14_shifted_dag_controller_codesign_plan.md` の研究方針を、
+本書は、`docs/docs_old/14_shifted_dag_controller_codesign_plan.md` の研究方針を、
 実装・実験・評価の順序まで落とした実行計画書である。
 
 これは固定仕様書ではない。co-design の性質上、
@@ -35,11 +35,11 @@
 現時点で既に揃っているもの:
 
 - raw vs shifted dynamic study
-  - `docs/13_shifted_dag_dynamic_report.md`
+  - `docs/docs_old/13_shifted_dag_dynamic_report.md`
 - co-design 方針書
-  - `docs/14_shifted_dag_controller_codesign_plan.md`
+  - `docs/docs_old/14_shifted_dag_controller_codesign_plan.md`
 - 今日までの進捗レポート
-  - `docs/15_controller_codesign_progress_report.md`
+  - `docs/docs_old/15_controller_codesign_progress_report.md`
 - scheduler architecture baseline
   - typed context
   - registry

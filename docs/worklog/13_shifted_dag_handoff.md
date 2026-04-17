@@ -45,7 +45,7 @@
 2. Run the controlled `next_cycle` width-matched sweep with `--dag-variant both`
 3. Aggregate into both `aggregated.csv` and `shifted_comparison.csv`
 4. Generate comparison figures
-5. Write results into `docs/13_shifted_dag_dynamic_report.md`
+5. Write results into `docs/docs_old/13_shifted_dag_dynamic_report.md`
 
 ## Commands
 

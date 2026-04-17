@@ -9,7 +9,7 @@
 
 本レポートは 2026-04-17 に実施した 3 つの仮説駆動型実験をまとめたものである。
 
-前回までの研究（doc 16）で「shifted DAG を使うと stall が悪化する regime がある」「ASAP が shifted DAG 上で支配的になる」という現象が観測されたが、その **機構** は未解明だった。本日の実験はその因果構造を明らかにすることを目的とした。
+前回までの研究（doc 16、`docs/docs_old/16_shifted_dag_codesign_interim_conclusion.md`）で「shifted DAG を使うと stall が悪化する regime がある」「ASAP が shifted DAG 上で支配的になる」という現象が観測されたが、その **機構** は未解明だった。本日の実験はその因果構造を明らかにすることを目的とした。
 
 ### 実験の問い
 

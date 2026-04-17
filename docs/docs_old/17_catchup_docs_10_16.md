@@ -2,7 +2,7 @@
 
 ## この資料の目的
 
-本資料は、`docs/10` から `docs/16` までに書かれている内容を、
+本資料は、`docs/docs_old/` に置いた doc 10 番台から doc 16 番台までに書かれている内容を、
 「研究全体として今どこまで進んでいるか」という観点で一気に追えるように整理した catch-up 用資料である。
 
 想定読者は、
@@ -35,20 +35,22 @@
 
 大きな流れはこうである。
 
-1. `docs/10`
+1. `10_ff_evaluator_report.md`
    - OneAdapt のコンパイル結果から、FF 依存深さ `D_ff` を新しく定義して評価した
-2. `docs/11`
+2. `11_pipeline_sim_report.md`
    - その依存 DAG を入力にして、パイプライン性能を動的にシミュレートした
-3. `docs/12`
+3. `12_research_progress_report.md`
    - ここまでの成果を、研究としてどういう意味があるかという観点で整理した
-4. `docs/13`
+4. `13_shifted_dag_dynamic_report.md`
    - `signal_shift` により static 改善が dynamic 改善につながるかを raw vs shifted で直接比較した
-5. `docs/14`
+5. `14_shifted_dag_controller_codesign_plan.md`
    - そこから「compiler optimization だけではなく controller も co-design すべき」という方針を立てた
-6. `docs/15`
+6. `15_controller_codesign_progress_report.md`
    - 実際に shifted-aware scheduler を実装し、focused な比較実験を回した
-7. `docs/16`
+7. `16_controller_codesign_execution_plan.md`
    - 今後の co-design 実行計画を整理した
+
+（いずれも `docs/docs_old/` 配下。）
 
 つまり、研究の流れは
 
@@ -61,7 +63,7 @@
 
 ## 各 doc の役割
 
-### `docs/10_ff_evaluator_report.md`
+### `docs/docs_old/10_ff_evaluator_report.md`
 
 役割:
 
@@ -91,7 +93,7 @@
   **古典制御の逐次依存が深い**ことにもある
 - しかもその深さはアルゴリズム依存である
 
-### `docs/11_pipeline_sim_report.md`
+### `docs/docs_old/11_pipeline_sim_report.md`
 
 役割:
 
@@ -118,7 +120,7 @@
 - 静的に `D_ff` が大きくても、動的には並列性で隠蔽できる場合がある
 - 逆に、幅やレイテンシの条件次第では一気に性能が悪化する
 
-### `docs/12_research_progress_report.md`
+### `docs/docs_old/12_research_progress_report.md`
 
 役割:
 
@@ -139,7 +141,7 @@
 - 研究の初期フェーズで「何ができるようになったか」を把握できる
 - 後続の `13-16` が何を拡張したのかを理解しやすくなる
 
-### `docs/13_shifted_dag_dynamic_report.md`
+### `docs/docs_old/13_shifted_dag_dynamic_report.md`
 
 役割:
 
@@ -177,7 +179,7 @@
 - 問題は shifted DAG 自体ではなく、
   それをどんな controller 条件で流すかにある
 
-### `docs/14_shifted_dag_controller_codesign_plan.md`
+### `docs/docs_old/14_shifted_dag_controller_codesign_plan.md`
 
 役割:
 
@@ -198,7 +200,7 @@
 この doc は、
 「次は co-design に進むべきだ」という研究上の方向付けをした文書である。
 
-### `docs/15_controller_codesign_progress_report.md`
+### `docs/docs_old/15_controller_codesign_progress_report.md`
 
 役割:
 
@@ -231,7 +233,7 @@
 - controller 側の policy は本当に効く
 - ただし universal winner はまだない
 
-### `docs/16_controller_codesign_execution_plan.md`
+### `docs/docs_old/16_controller_codesign_execution_plan.md`
 
 役割:
 
@@ -362,11 +364,11 @@
 
 ### 今見るべきもの
 
-- `docs/10`
-- `docs/11`
-- `docs/13`
-- `docs/15`
-- `docs/16`
+- `docs/docs_old/10_ff_evaluator_report.md`
+- `docs/docs_old/11_pipeline_sim_report.md`
+- `docs/docs_old/13_shifted_dag_dynamic_report.md`
+- `docs/docs_old/15_controller_codesign_progress_report.md`
+- `docs/docs_old/16_controller_codesign_execution_plan.md`
 
 結果ファイルとしては:
 
@@ -389,30 +391,30 @@
 ### 15 分で追う
 
 1. この資料
-2. `docs/13`
-3. `docs/15`
+2. `docs/docs_old/13_shifted_dag_dynamic_report.md`
+3. `docs/docs_old/15_controller_codesign_progress_report.md`
 
 ### 1 時間で追う
 
 1. この資料
-2. `docs/10`
-3. `docs/11`
-4. `docs/13`
-5. `docs/15`
+2. `docs/docs_old/10_ff_evaluator_report.md`
+3. `docs/docs_old/11_pipeline_sim_report.md`
+4. `docs/docs_old/13_shifted_dag_dynamic_report.md`
+5. `docs/docs_old/15_controller_codesign_progress_report.md`
 
 ### 発表準備レベルで追う
 
 1. この資料
-2. `docs/10`
-3. `docs/11`
-4. `docs/13`
-5. `docs/14`
-6. `docs/15`
-7. `docs/16`
+2. `docs/docs_old/10_ff_evaluator_report.md`
+3. `docs/docs_old/11_pipeline_sim_report.md`
+4. `docs/docs_old/13_shifted_dag_dynamic_report.md`
+5. `docs/docs_old/14_shifted_dag_controller_codesign_plan.md`
+6. `docs/docs_old/15_controller_codesign_progress_report.md`
+7. `docs/docs_old/16_controller_codesign_execution_plan.md`
 
 ## 最後に一言で言うと
 
-`docs/10-16` の流れを一言でまとめると、
+`docs/docs_old/` にまとめた doc 10–16 番台の流れを一言でまとめると、
 
 **光 MBQC の古典制御制約を、静的な FF 深さ評価から始めて、動的シミュレーションに拡張し、最終的に shifted DAG を前提にした controller co-design の問題として再定義した**
 
