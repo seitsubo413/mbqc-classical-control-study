@@ -75,7 +75,7 @@ COLORS_H12 = ["#ff7f0e"]
 
 ALGORITHMS = ["QAOA", "VQE"]
 
-fig, axes = plt.subplots(2, 2, figsize=(10, 6), sharex=True)
+fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
 fig.subplots_adjust(hspace=0.38, wspace=0.30)
 
 for row_idx, algo in enumerate(ALGORITHMS):
@@ -171,7 +171,7 @@ fig.suptitle(
 )
 
 plt.tight_layout()
-plt.savefig(OUT_PNG, dpi=150, bbox_inches="tight")
+plt.savefig(OUT_PNG, dpi=200, bbox_inches="tight")
 print(f"Saved: {OUT_PNG}")
 
 # Print summary values

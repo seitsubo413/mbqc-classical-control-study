@@ -232,9 +232,9 @@ def draw_heatmap(ax, mat, xticklabels, yticklabels, xlabel, ylabel, title,
 
 fig, axes = plt.subplots(2, 2, figsize=(13, 7))
 fig.suptitle(
-    "F* sensitivity (Study 21 raw baseline extends sweep to F=2,3)\n"
-    "ff_rate_matched (top): F*(ff_rm) = 4 in Studies 18/19 context (F>=4 swept)\n"
-    "Direct F*=2 confirmation: Study 20 shifted+ff_rm (F=2,3,4) vs Study 21 raw+ASAP",
+    "F*(ff_rate_matched) = 4 = W/2 is invariant under L_ff (left) and L_meas (right)\n"
+    "F*(ASAP) reaches 6–8 (bottom panels) — green cells labeled '4' confirm W/2 design point\n"
+    "Studies 18 & 19 sweep F ≥ 4; Study 21 cross-study comparison confirms criterion holds at F=1,2,3",
     fontsize=11, fontweight="bold", y=1.02
 )
 
