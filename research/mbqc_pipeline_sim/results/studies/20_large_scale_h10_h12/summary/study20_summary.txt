@@ -1,0 +1,56 @@
+Study 20: ASAP vs ff_rate_matched — Large-scale H=10/12
+Paired rows: 1080
+
+Global:
+  median(cycles_ratio_ff_over_asap) = 1.000000  (1.0 = same total_cycles)
+  median(throughput_gain_pct) = 0.0000%
+  cycles_ratio == 1.0: 1080
+  cycles_ratio >  1.0: 0  (ff_rate_matched slower)
+  cycles_ratio <  1.0: 0  (ff_rate_matched faster)
+
+By F/W and issue_width (median cycles_ratio):
+  F/W=0.1250  issue_width=16  n=120  median_cycles_ratio=1.000000
+  F/W=0.1875  issue_width=16  n=120  median_cycles_ratio=1.000000
+  F/W=0.2500  issue_width= 8  n=120  median_cycles_ratio=1.000000
+  F/W=0.2500  issue_width=16  n=120  median_cycles_ratio=1.000000
+  F/W=0.3750  issue_width= 8  n=120  median_cycles_ratio=1.000000
+  F/W=0.5000  issue_width= 4  n=120  median_cycles_ratio=1.000000
+  F/W=0.5000  issue_width= 8  n=120  median_cycles_ratio=1.000000
+  F/W=0.7500  issue_width= 4  n=120  median_cycles_ratio=1.000000
+  F/W=1.0000  issue_width= 4  n=120  median_cycles_ratio=1.000000
+
+Stall rate by (algorithm, H, Q, ff_width):
+  QAOA H=10 Q=100 ff_width=2  asap=0.3978  ff_rate_matched=0.0005
+  QAOA H=10 Q=100 ff_width=3  asap=0.1918  ff_rate_matched=0.0005
+  QAOA H=10 Q=100 ff_width=4  asap=0.0007  ff_rate_matched=0.0007
+  QAOA H=10 Q= 36 ff_width=2  asap=0.3792  ff_rate_matched=0.0039
+  QAOA H=10 Q= 36 ff_width=3  asap=0.1736  ff_rate_matched=0.0039
+  QAOA H=10 Q= 36 ff_width=4  asap=0.0052  ff_rate_matched=0.0052
+  QAOA H=10 Q= 64 ff_width=2  asap=0.3932  ff_rate_matched=0.0012
+  QAOA H=10 Q= 64 ff_width=3  asap=0.1837  ff_rate_matched=0.0012
+  QAOA H=10 Q= 64 ff_width=4  asap=0.0016  ff_rate_matched=0.0016
+  QAOA H=12 Q= 64 ff_width=2  asap=0.3932  ff_rate_matched=0.0012
+  QAOA H=12 Q= 64 ff_width=3  asap=0.1837  ff_rate_matched=0.0012
+  QAOA H=12 Q= 64 ff_width=4  asap=0.0016  ff_rate_matched=0.0016
+  VQE H=10 Q=100 ff_width=2  asap=0.4895  ff_rate_matched=0.0006
+  VQE H=10 Q=100 ff_width=3  asap=0.2394  ff_rate_matched=0.0009
+  VQE H=10 Q=100 ff_width=4  asap=0.0008  ff_rate_matched=0.0008
+  VQE H=10 Q= 36 ff_width=2  asap=0.4700  ff_rate_matched=0.0046
+  VQE H=10 Q= 36 ff_width=3  asap=0.2230  ff_rate_matched=0.0046
+  VQE H=10 Q= 36 ff_width=4  asap=0.0061  ff_rate_matched=0.0061
+  VQE H=10 Q= 64 ff_width=2  asap=0.4837  ff_rate_matched=0.0015
+  VQE H=10 Q= 64 ff_width=3  asap=0.2345  ff_rate_matched=0.0022
+  VQE H=10 Q= 64 ff_width=4  asap=0.0019  ff_rate_matched=0.0019
+  VQE H=12 Q= 64 ff_width=2  asap=0.4837  ff_rate_matched=0.0015
+  VQE H=12 Q= 64 ff_width=3  asap=0.2345  ff_rate_matched=0.0022
+  VQE H=12 Q= 64 ff_width=4  asap=0.0019  ff_rate_matched=0.0019
+
+Throughput cost (issue_width=8, ff_width=4) — representative:
+  QAOA H=10 Q=100  median_cycles_ratio=1.000000  n=15
+  QAOA H=10 Q= 36  median_cycles_ratio=1.000000  n=15
+  QAOA H=10 Q= 64  median_cycles_ratio=1.000000  n=15
+  QAOA H=12 Q= 64  median_cycles_ratio=1.000000  n=15
+  VQE H=10 Q=100  median_cycles_ratio=1.000000  n=15
+  VQE H=10 Q= 36  median_cycles_ratio=1.000000  n=15
+  VQE H=10 Q= 64  median_cycles_ratio=1.000000  n=15
+  VQE H=12 Q= 64  median_cycles_ratio=1.000000  n=15
