@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "Research sandbox for MBQC feedforward constraint evaluation"
 readme = "README.md"
 requires-python = ">=3.10,<3.12"
+dependencies = [
+    "mbqc-graph-compiler",
+    "networkx>=3.0",
+]
 
 [project.optional-dependencies]
 dev = [
